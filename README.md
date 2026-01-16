@@ -14,7 +14,9 @@ This system provides a unique approach to code audits that goes beyond tradition
 4. **Classifies Technical Debt**: Uses Fowler Quadrant (Prudent/Reckless × Deliberate/Inadvertent)
 5. **Synthesizes Root Causes**: Clusters findings into 3-5 actionable root causes
 
-See [VIEWPOINTS_FRAMEWORK.md](docs/VIEWPOINTS_FRAMEWORK.md) for the complete v2.0 framework specification.
+**Documentation:**
+- [VIEWPOINTS_FRAMEWORK.md](docs/VIEWPOINTS_FRAMEWORK.md) - Complete v2.0 framework specification
+- [OPERATIONS_GUIDE.md](docs/OPERATIONS_GUIDE.md) - Installation, configuration, and usage guide
 
 ## Architecture
 
@@ -174,7 +176,8 @@ RECKLESS │ "No time for       │ "What's layering?" │
 .
 ├── Cargo.toml                    # Workspace manifest
 ├── docs/
-│   └── VIEWPOINTS_FRAMEWORK.md   # v2.0 Framework specification
+│   ├── VIEWPOINTS_FRAMEWORK.md   # v2.0 Framework specification
+│   └── OPERATIONS_GUIDE.md       # Installation and usage guide
 ├── mental-model-server/          # Mental Model MCP Server
 │   ├── Cargo.toml
 │   └── src/
