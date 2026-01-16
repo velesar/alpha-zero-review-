@@ -1,7 +1,7 @@
 ---
 name: vp-q03-testability
 version: 1.0
-dependencies: [vp-f02-structure, vp-s02-layer-architecture, vp-s06-hotspots]
+dependencies: [vp-f02-structure, vp-s02-layer-architecture, vp-s06-dependency-graph]
 mcp_servers: [mental-model, methodology-kb]
 ---
 

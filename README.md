@@ -42,10 +42,10 @@ See [VIEWPOINTS_FRAMEWORK.md](docs/VIEWPOINTS_FRAMEWORK.md) for the complete v2.
 ### MCP Servers (Rust)
 
 - **mental-model-server**: Manages the central mental model artifact
-  - Tools: `init_model`, `get_model`, `update_viewpoint`, `get_context`, `get_constraints`, `add_finding`, `synthesize`
+  - Tools: `init_model`, `get_model`, `update_viewpoint`, `get_context`, `get_constraints`, `add_finding`, `get_findings`, `synthesize`, `get_completed_viewpoints`
 
 - **methodology-kb-server**: Knowledge base for metrics, thresholds, and standards
-  - Tools: `lookup_metric`, `classify_finding`, `get_thresholds`, `check_compliance`, `get_template`
+  - Tools: `lookup_metric`, `classify_finding`, `get_thresholds`, `check_compliance`, `get_template`, `list_metrics`, `list_standards`, `get_category`
 
 ### Viewpoints Framework (16 required + 3 optional SKILL.md files)
 

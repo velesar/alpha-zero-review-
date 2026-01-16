@@ -1,7 +1,7 @@
 ---
 name: vp-s07-architecture-decisions
 version: 1.0
-dependencies: [vp-s01-module-hierarchy, vp-s02-layer-architecture, vp-s06-hotspots]
+dependencies: [vp-s01-module-hierarchy, vp-s02-layer-architecture, vp-s06-dependency-graph]
 mcp_servers: [mental-model, methodology-kb]
 ---
 

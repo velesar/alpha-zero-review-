@@ -1,7 +1,7 @@
 ---
 name: vp-q04-code-style
 version: 1.0
-dependencies: [vp-f01-tech-stack, vp-s06-hotspots]
+dependencies: [vp-f01-tech-stack, vp-s06-dependency-graph]
 mcp_servers: [mental-model, methodology-kb]
 ---
 

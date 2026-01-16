@@ -1,7 +1,7 @@
 ---
 name: vp-q01-security
 version: 1.0
-dependencies: [vp-s02-layer-architecture, vp-s05-interface-surface, vp-s06-hotspots]
+dependencies: [vp-s02-layer-architecture, vp-s05-interface-surface, vp-s06-dependency-graph]
 mcp_servers: [mental-model, methodology-kb]
 ---
 
