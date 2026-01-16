@@ -5,8 +5,8 @@
 # and guide the AI agent through the audit process.
 
 name: "AI Code Audit Mode"
-version: "1.0"
-description: "Mental Model-first approach to code quality audit"
+version: "2.0"
+description: "Mental Model-first approach to code quality audit with Fowler Quadrant debt classification"
 
 # MCP Server Requirements
 mcp_servers:
@@ -37,17 +37,23 @@ rules:
         6. VP-S03: Domain Model Analysis
         7. VP-S04: Entity Model Analysis
         8. VP-S05: Interface Surface Analysis
-        9. VP-S06: Hotspots Analysis
+        9. VP-S06: Dependency Graph Analysis
+        10. VP-S07: Architecture Decisions Analysis
+
+      OPTIONAL STRUCTURE VIEWPOINTS (execute if applicable):
+        - VP-S08: Team Topologies Mapping [enterprise projects]
+        - VP-S09: Building Block Compliance [TOGAF environments]
+        - VP-S10: Standards Compliance [compliance audits]
 
       QUALITY PHASE (find issues with context):
-        10. VP-Q01: Security Analysis
-        11. VP-Q02: Performance Analysis
-        12. VP-Q03: Testability Analysis
-        13. VP-Q04: Code Style Analysis
-        14. VP-Q05: Documentation Analysis
+        11. VP-Q01: Security Analysis
+        12. VP-Q02: Performance Analysis
+        13. VP-Q03: Testability Analysis
+        14. VP-Q04: Code Style Analysis
+        15. VP-Q05: Documentation Analysis
 
-      SYNTHESIS PHASE (generate insights):
-        15. VP-Q06: Synthesis & Reporting
+      SYNTHESIS PHASE (generate insights with Fowler Quadrant):
+        16. VP-Q06: Technical Debt Synthesis & Reporting
 
       Load each viewpoint's SKILL.md file and follow its instructions.
       Do not skip viewpoints. Each builds on previous ones.
@@ -165,14 +171,59 @@ rules:
       Architecture violations in core domain are more severe than
       violations in generic/infrastructure code.
 
+  # Rule 9: Fowler Quadrant classification
+  - name: "Classify technical debt by Fowler Quadrant"
+    trigger: "technical debt|debt classification|synthesis|VP-Q06"
+    priority: 2
+    instruction: |
+      When classifying technical debt in synthesis phase:
+
+      Use the Fowler Quadrant (2x2 matrix):
+        - Prudent-Deliberate: "We must ship now" - Schedule payback
+        - Prudent-Inadvertent: "Now we know better" - Refactor incrementally
+        - Reckless-Deliberate: "No time for design" - Urgent remediation
+        - Reckless-Inadvertent: "What's layering?" - Training needed
+
+      Indicators for classification:
+        - Prudent: TODO comments, tickets, documented trade-offs
+        - Reckless: No tests, skipped reviews, anti-patterns
+        - Deliberate: Explicit decision (comments, ADRs)
+        - Inadvertent: Lack of knowledge (N+1 queries, no validation)
+
+      Quadrant distribution indicates team health:
+        - High Prudent = Healthy trade-off culture
+        - High Reckless-Deliberate = Process problems
+        - High Reckless-Inadvertent = Knowledge gaps (training needed)
+
+  # Rule 10: Optional viewpoints
+  - name: "Execute optional viewpoints when applicable"
+    trigger: "enterprise|compliance|TOGAF|team structure|standards"
+    priority: 1
+    instruction: |
+      Execute optional viewpoints based on audit scope:
+
+      VP-S08 (Team Topologies): For enterprise projects with multiple teams
+        - Analyze Conway's Law alignment
+        - Identify ownership gaps and cognitive load issues
+
+      VP-S09 (Building Block Compliance): For TOGAF/enterprise architecture
+        - Map to reference architecture building blocks
+        - Identify ABB/SBB gaps
+
+      VP-S10 (Standards Compliance): For compliance-focused audits
+        - Verify technology standards adherence
+        - Check security policy compliance
+
 # Output Formatting
 output:
   format: markdown
   sections:
     - executive_summary
     - root_causes
+    - fowler_quadrant_analysis
     - recommendations
     - detailed_findings
+    - technical_debt_inventory
 
 # Quality Gates
 quality_gates:
