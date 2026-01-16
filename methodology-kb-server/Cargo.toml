@@ -1,0 +1,22 @@
+[package]
+name = "methodology-kb-server"
+version = "0.1.0"
+edition = "2021"
+description = "MCP Server for Methodology Knowledge Base in AI Code Audit"
+authors = ["Light IT Global"]
+
+[dependencies]
+rmcp = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+schemars = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+glob = { workspace = true }
+clap = { version = "4", features = ["derive"] }

@@ -1,0 +1,123 @@
+# Layered Architecture Standard
+# Traditional N-tier architecture pattern
+
+id: layered_architecture
+name: Layered Architecture
+description: >
+  Traditional layered architecture where each layer serves the layer above it.
+  Dependencies flow downward - upper layers depend on lower layers.
+  Common in web applications with presentation, business, and data layers.
+
+layers:
+  - name: presentation
+    aliases:
+      - ui
+      - web
+      - views
+      - templates
+      - frontend
+    typical_paths:
+      - src/presentation
+      - src/ui
+      - src/views
+      - src/web
+      - src/templates
+      - app/views
+      - pages/
+      - components/
+    purpose: >
+      User interface layer. Handles rendering, user input, and display logic.
+      No business rules should exist here.
+    allowed_dependencies:
+      - application
+      - services
+
+  - name: application
+    aliases:
+      - controllers
+      - handlers
+      - api
+      - routes
+    typical_paths:
+      - src/controllers
+      - src/handlers
+      - src/api
+      - src/routes
+      - app/controllers
+      - app/api
+    purpose: >
+      Application layer coordinates the application activity.
+      Routes requests to appropriate services and transforms data for presentation.
+    allowed_dependencies:
+      - services
+      - business
+      - domain
+
+  - name: services
+    aliases:
+      - business
+      - business_logic
+      - domain
+    typical_paths:
+      - src/services
+      - src/business
+      - src/domain
+      - app/services
+      - lib/services
+    purpose: >
+      Business logic layer. Contains business rules, validations,
+      and core application logic. Independent of how data is stored or presented.
+    allowed_dependencies:
+      - data
+      - repositories
+      - models
+
+  - name: data
+    aliases:
+      - persistence
+      - repositories
+      - dal
+      - database
+      - models
+    typical_paths:
+      - src/data
+      - src/repositories
+      - src/models
+      - src/persistence
+      - app/models
+      - db/
+    purpose: >
+      Data access layer. Handles persistence, database operations,
+      and external data sources. Isolates storage concerns from business logic.
+    allowed_dependencies: []
+
+dependency_rules:
+  - from: data
+    to: services
+    allowed: false
+    reason: Data layer must not depend on services
+
+  - from: data
+    to: application
+    allowed: false
+    reason: Data layer must not depend on application layer
+
+  - from: data
+    to: presentation
+    allowed: false
+    reason: Data layer must not depend on presentation
+
+  - from: services
+    to: application
+    allowed: false
+    reason: Services must not depend on application layer
+
+  - from: services
+    to: presentation
+    allowed: false
+    reason: Services must not depend on presentation
+
+  - from: application
+    to: presentation
+    allowed: false
+    reason: Application layer must not depend on presentation

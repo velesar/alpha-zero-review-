@@ -1,0 +1,237 @@
+# Finding Categories
+# Hierarchical taxonomy of code quality issue categories
+
+security:
+  id: security
+  name: Security
+  description: >
+    Issues that could lead to security vulnerabilities, data breaches,
+    or unauthorized access. Includes injection flaws, authentication issues,
+    and cryptographic weaknesses.
+  parent: null
+  weight: 1.5
+
+security_injection:
+  id: security_injection
+  name: Injection Vulnerabilities
+  description: >
+    SQL injection, command injection, LDAP injection, and other injection flaws
+    where untrusted data is sent to an interpreter.
+  parent: security
+  weight: 1.8
+
+security_auth:
+  id: security_auth
+  name: Authentication & Authorization
+  description: >
+    Issues with authentication mechanisms, session management,
+    or access control that could allow unauthorized access.
+  parent: security
+  weight: 1.6
+
+security_crypto:
+  id: security_crypto
+  name: Cryptographic Issues
+  description: >
+    Weak algorithms, improper key management, or incorrect
+    cryptographic implementations.
+  parent: security
+  weight: 1.4
+
+security_xss:
+  id: security_xss
+  name: Cross-Site Scripting
+  description: >
+    Reflected, stored, or DOM-based XSS vulnerabilities that
+    allow execution of malicious scripts.
+  parent: security
+  weight: 1.5
+
+reliability:
+  id: reliability
+  name: Reliability
+  description: >
+    Issues that could cause application crashes, data corruption,
+    or incorrect behavior. Includes error handling and resource management.
+  parent: null
+  weight: 1.3
+
+reliability_error:
+  id: reliability_error
+  name: Error Handling
+  description: >
+    Missing or improper error handling, swallowed exceptions,
+    or error conditions that lead to undefined behavior.
+  parent: reliability
+  weight: 1.2
+
+reliability_resource:
+  id: reliability_resource
+  name: Resource Management
+  description: >
+    Resource leaks (memory, file handles, connections),
+    improper cleanup, or resource exhaustion issues.
+  parent: reliability
+  weight: 1.3
+
+reliability_concurrency:
+  id: reliability_concurrency
+  name: Concurrency Issues
+  description: >
+    Race conditions, deadlocks, thread safety issues,
+    and improper synchronization.
+  parent: reliability
+  weight: 1.4
+
+maintainability:
+  id: maintainability
+  name: Maintainability
+  description: >
+    Issues that make code harder to understand, modify, or extend.
+    Includes complexity, duplication, and poor structure.
+  parent: null
+  weight: 1.0
+
+maintainability_complexity:
+  id: maintainability_complexity
+  name: Complexity
+  description: >
+    Overly complex code, deep nesting, long functions,
+    and high cyclomatic/cognitive complexity.
+  parent: maintainability
+  weight: 1.0
+
+maintainability_duplication:
+  id: maintainability_duplication
+  name: Code Duplication
+  description: >
+    Duplicated code blocks that violate DRY principle
+    and increase maintenance burden.
+  parent: maintainability
+  weight: 0.9
+
+maintainability_naming:
+  id: maintainability_naming
+  name: Naming & Readability
+  description: >
+    Poor naming conventions, unclear variable names,
+    or code that's hard to read and understand.
+  parent: maintainability
+  weight: 0.8
+
+performance:
+  id: performance
+  name: Performance
+  description: >
+    Issues that impact application performance, including
+    inefficient algorithms, unnecessary operations, and bottlenecks.
+  parent: null
+  weight: 1.1
+
+performance_algorithm:
+  id: performance_algorithm
+  name: Algorithm Efficiency
+  description: >
+    Inefficient algorithms with poor time or space complexity,
+    unnecessary iterations, or suboptimal data structures.
+  parent: performance
+  weight: 1.1
+
+performance_database:
+  id: performance_database
+  name: Database Performance
+  description: >
+    N+1 queries, missing indexes, inefficient queries,
+    or excessive database calls.
+  parent: performance
+  weight: 1.2
+
+performance_memory:
+  id: performance_memory
+  name: Memory Usage
+  description: >
+    Excessive memory allocation, large object creation,
+    or inefficient memory patterns.
+  parent: performance
+  weight: 1.0
+
+testability:
+  id: testability
+  name: Testability
+  description: >
+    Issues that make code difficult to test, including
+    tight coupling, hidden dependencies, and poor separation of concerns.
+  parent: null
+  weight: 0.9
+
+testability_coverage:
+  id: testability_coverage
+  name: Test Coverage
+  description: >
+    Insufficient test coverage for critical paths,
+    missing edge case tests, or untested code.
+  parent: testability
+  weight: 0.9
+
+testability_coupling:
+  id: testability_coupling
+  name: Coupling & Dependencies
+  description: >
+    Hard-coded dependencies, tight coupling,
+    or code that requires extensive mocking to test.
+  parent: testability
+  weight: 0.8
+
+architecture:
+  id: architecture
+  name: Architecture
+  description: >
+    Structural issues at the architectural level,
+    including layer violations and circular dependencies.
+  parent: null
+  weight: 1.2
+
+architecture_layers:
+  id: architecture_layers
+  name: Layer Violations
+  description: >
+    Dependencies that violate architectural layer boundaries
+    or break the dependency inversion principle.
+  parent: architecture
+  weight: 1.2
+
+architecture_circular:
+  id: architecture_circular
+  name: Circular Dependencies
+  description: >
+    Circular dependencies between modules or packages
+    that indicate poor architectural design.
+  parent: architecture
+  weight: 1.3
+
+documentation:
+  id: documentation
+  name: Documentation
+  description: >
+    Missing or inadequate documentation for public APIs,
+    complex logic, or important decisions.
+  parent: null
+  weight: 0.6
+
+documentation_api:
+  id: documentation_api
+  name: API Documentation
+  description: >
+    Missing documentation for public APIs, endpoints,
+    or external interfaces.
+  parent: documentation
+  weight: 0.7
+
+documentation_code:
+  id: documentation_code
+  name: Code Documentation
+  description: >
+    Missing comments for complex logic or
+    important implementation decisions.
+  parent: documentation
+  weight: 0.5

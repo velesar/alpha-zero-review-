@@ -1,0 +1,118 @@
+# Clean Architecture Standard
+# Based on Robert C. Martin's Clean Architecture principles
+
+id: clean_architecture
+name: Clean Architecture
+description: >
+  Clean Architecture organizes code into concentric layers with the dependency rule:
+  dependencies only point inward. Inner layers know nothing about outer layers.
+  This creates testable, maintainable systems where business rules are independent
+  of frameworks and external concerns.
+
+layers:
+  - name: domain
+    aliases:
+      - entities
+      - core
+      - business
+    typical_paths:
+      - src/domain
+      - src/core
+      - src/entities
+      - app/domain
+      - lib/domain
+    purpose: >
+      Enterprise business rules and entities. Contains the most stable,
+      high-level policies. No dependencies on any outer layer.
+    allowed_dependencies: []
+
+  - name: application
+    aliases:
+      - use_cases
+      - usecases
+      - interactors
+      - services
+    typical_paths:
+      - src/application
+      - src/use_cases
+      - src/usecases
+      - src/services
+      - app/services
+      - lib/services
+    purpose: >
+      Application-specific business rules. Contains use cases that orchestrate
+      data flow between entities. Depends only on domain layer.
+    allowed_dependencies:
+      - domain
+
+  - name: adapters
+    aliases:
+      - interfaces
+      - interface_adapters
+      - controllers
+      - presenters
+      - gateways
+    typical_paths:
+      - src/adapters
+      - src/interfaces
+      - src/controllers
+      - src/api
+      - app/controllers
+      - app/api
+    purpose: >
+      Interface adapters that convert data between use cases and external agencies.
+      Contains controllers, presenters, and gateways.
+    allowed_dependencies:
+      - domain
+      - application
+
+  - name: infrastructure
+    aliases:
+      - frameworks
+      - drivers
+      - external
+    typical_paths:
+      - src/infrastructure
+      - src/frameworks
+      - src/external
+      - src/db
+      - src/repositories
+      - app/infrastructure
+    purpose: >
+      Frameworks, databases, web servers, and other external agencies.
+      The outermost layer containing all implementation details.
+    allowed_dependencies:
+      - domain
+      - application
+      - adapters
+
+dependency_rules:
+  - from: domain
+    to: application
+    allowed: false
+    reason: Domain layer must not depend on application layer
+
+  - from: domain
+    to: adapters
+    allowed: false
+    reason: Domain layer must not depend on adapters
+
+  - from: domain
+    to: infrastructure
+    allowed: false
+    reason: Domain layer must not depend on infrastructure
+
+  - from: application
+    to: adapters
+    allowed: false
+    reason: Application layer must not depend on adapters
+
+  - from: application
+    to: infrastructure
+    allowed: false
+    reason: Application layer must not depend on infrastructure
+
+  - from: adapters
+    to: infrastructure
+    allowed: false
+    reason: Adapters should not directly depend on infrastructure details

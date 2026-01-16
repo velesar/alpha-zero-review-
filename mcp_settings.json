@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/mcp-settings",
+  "description": "MCP Server configuration for AI Code Audit",
+  "mcpServers": {
+    "mental-model": {
+      "command": "./target/release/mental-model-server",
+      "args": ["--model-path", "./mental_model.yaml"],
+      "description": "Mental Model MCP Server for managing audit state",
+      "env": {}
+    },
+    "methodology-kb": {
+      "command": "./target/release/methodology-kb-server",
+      "args": ["--kb-path", "./methodology_kb/"],
+      "description": "Methodology Knowledge Base MCP Server",
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,402 @@
+# Rule Mapping
+# Maps tool-specific rule IDs to categories and base severity
+
+# Semgrep Rules
+- tool: semgrep
+  rule_id: python.lang.security.audit.dangerous-subprocess-use
+  category: security_injection
+  base_severity: HIGH
+  description: Command injection via subprocess
+
+- tool: semgrep
+  rule_id: python.lang.security.audit.exec-detected
+  category: security_injection
+  base_severity: CRITICAL
+  description: Code execution via exec()
+
+- tool: semgrep
+  rule_id: python.lang.security.audit.eval-detected
+  category: security_injection
+  base_severity: CRITICAL
+  description: Code execution via eval()
+
+- tool: semgrep
+  rule_id: python.django.security.audit.xss
+  category: security_xss
+  base_severity: HIGH
+  description: Cross-site scripting in Django
+
+- tool: semgrep
+  rule_id: python.flask.security.audit.xss
+  category: security_xss
+  base_severity: HIGH
+  description: Cross-site scripting in Flask
+
+- tool: semgrep
+  rule_id: python.lang.security.insecure-hash-algorithms
+  category: security_crypto
+  base_severity: MEDIUM
+  description: Use of insecure hash algorithm
+
+- tool: semgrep
+  rule_id: python.lang.security.audit.hardcoded-password
+  category: security_auth
+  base_severity: HIGH
+  description: Hardcoded password or secret
+
+- tool: semgrep
+  rule_id: javascript.express.security.audit.express-ssrf
+  category: security
+  base_severity: HIGH
+  description: Server-side request forgery
+
+- tool: semgrep
+  rule_id: javascript.lang.security.audit.prototype-pollution
+  category: security
+  base_severity: HIGH
+  description: Prototype pollution vulnerability
+
+- tool: semgrep
+  rule_id: typescript.react.security.audit.react-dangerouslysetinnerhtml
+  category: security_xss
+  base_severity: MEDIUM
+  description: Dangerous HTML rendering in React
+
+# Bandit Rules (Python)
+- tool: bandit
+  rule_id: B101
+  category: testability
+  base_severity: LOW
+  description: Assert used for non-debug purposes
+
+- tool: bandit
+  rule_id: B102
+  category: security_injection
+  base_severity: MEDIUM
+  description: exec() used
+
+- tool: bandit
+  rule_id: B103
+  category: security
+  base_severity: LOW
+  description: Set bad file permissions
+
+- tool: bandit
+  rule_id: B104
+  category: security
+  base_severity: MEDIUM
+  description: Binding to all interfaces
+
+- tool: bandit
+  rule_id: B105
+  category: security_auth
+  base_severity: HIGH
+  description: Hardcoded password string
+
+- tool: bandit
+  rule_id: B106
+  category: security_auth
+  base_severity: HIGH
+  description: Hardcoded password argument
+
+- tool: bandit
+  rule_id: B107
+  category: security_auth
+  base_severity: HIGH
+  description: Hardcoded password default
+
+- tool: bandit
+  rule_id: B108
+  category: reliability
+  base_severity: MEDIUM
+  description: Insecure temporary file
+
+- tool: bandit
+  rule_id: B110
+  category: reliability_error
+  base_severity: LOW
+  description: Try/except pass
+
+- tool: bandit
+  rule_id: B201
+  category: security_injection
+  base_severity: HIGH
+  description: flask.debug mode
+
+- tool: bandit
+  rule_id: B301
+  category: security
+  base_severity: MEDIUM
+  description: Pickle usage
+
+- tool: bandit
+  rule_id: B302
+  category: security
+  base_severity: HIGH
+  description: marshal module usage
+
+- tool: bandit
+  rule_id: B303
+  category: security_crypto
+  base_severity: HIGH
+  description: MD5 usage
+
+- tool: bandit
+  rule_id: B304
+  category: security_crypto
+  base_severity: HIGH
+  description: DES cipher usage
+
+- tool: bandit
+  rule_id: B305
+  category: security_crypto
+  base_severity: HIGH
+  description: Weak cipher mode
+
+- tool: bandit
+  rule_id: B306
+  category: security
+  base_severity: MEDIUM
+  description: mktemp usage
+
+- tool: bandit
+  rule_id: B307
+  category: security_injection
+  base_severity: HIGH
+  description: eval() usage
+
+- tool: bandit
+  rule_id: B308
+  category: security_xss
+  base_severity: MEDIUM
+  description: mark_safe usage
+
+- tool: bandit
+  rule_id: B501
+  category: security
+  base_severity: HIGH
+  description: Request with no cert validation
+
+- tool: bandit
+  rule_id: B502
+  category: security
+  base_severity: HIGH
+  description: SSL with bad version
+
+- tool: bandit
+  rule_id: B503
+  category: security
+  base_severity: MEDIUM
+  description: SSL with bad defaults
+
+- tool: bandit
+  rule_id: B601
+  category: security_injection
+  base_severity: HIGH
+  description: Shell injection via paramiko
+
+- tool: bandit
+  rule_id: B602
+  category: security_injection
+  base_severity: HIGH
+  description: Shell injection via subprocess
+
+- tool: bandit
+  rule_id: B603
+  category: security_injection
+  base_severity: MEDIUM
+  description: Subprocess without shell=False
+
+- tool: bandit
+  rule_id: B604
+  category: security_injection
+  base_severity: HIGH
+  description: Shell injection via subprocess.call
+
+- tool: bandit
+  rule_id: B605
+  category: security_injection
+  base_severity: HIGH
+  description: Shell injection via os.system
+
+- tool: bandit
+  rule_id: B607
+  category: security_injection
+  base_severity: LOW
+  description: Partial path for subprocess
+
+- tool: bandit
+  rule_id: B608
+  category: security_injection
+  base_severity: MEDIUM
+  description: SQL injection via string formatting
+
+# ESLint Rules (JavaScript/TypeScript)
+- tool: eslint
+  rule_id: no-eval
+  category: security_injection
+  base_severity: CRITICAL
+  description: eval() usage
+
+- tool: eslint
+  rule_id: no-implied-eval
+  category: security_injection
+  base_severity: HIGH
+  description: Implied eval()
+
+- tool: eslint
+  rule_id: no-new-func
+  category: security_injection
+  base_severity: HIGH
+  description: Function constructor
+
+- tool: eslint
+  rule_id: security/detect-sql-injection
+  category: security_injection
+  base_severity: HIGH
+  description: SQL injection
+
+- tool: eslint
+  rule_id: security/detect-non-literal-regexp
+  category: security
+  base_severity: MEDIUM
+  description: ReDoS vulnerability
+
+- tool: eslint
+  rule_id: security/detect-object-injection
+  category: security
+  base_severity: MEDIUM
+  description: Object injection
+
+- tool: eslint
+  rule_id: complexity
+  category: maintainability_complexity
+  base_severity: MEDIUM
+  description: High cyclomatic complexity
+
+- tool: eslint
+  rule_id: max-depth
+  category: maintainability_complexity
+  base_severity: LOW
+  description: Deep nesting
+
+- tool: eslint
+  rule_id: max-lines-per-function
+  category: maintainability_complexity
+  base_severity: LOW
+  description: Function too long
+
+# SonarQube Rules
+- tool: sonarqube
+  rule_id: S1192
+  category: maintainability_duplication
+  base_severity: LOW
+  description: String literals duplication
+
+- tool: sonarqube
+  rule_id: S3776
+  category: maintainability_complexity
+  base_severity: MEDIUM
+  description: Cognitive complexity
+
+- tool: sonarqube
+  rule_id: S1066
+  category: maintainability
+  base_severity: LOW
+  description: Collapsible if statements
+
+- tool: sonarqube
+  rule_id: S1067
+  category: maintainability_complexity
+  base_severity: MEDIUM
+  description: Expression complexity
+
+- tool: sonarqube
+  rule_id: S107
+  category: maintainability
+  base_severity: LOW
+  description: Too many parameters
+
+- tool: sonarqube
+  rule_id: S134
+  category: maintainability_complexity
+  base_severity: MEDIUM
+  description: Control flow nesting
+
+- tool: sonarqube
+  rule_id: S2068
+  category: security_auth
+  base_severity: CRITICAL
+  description: Hardcoded credentials
+
+- tool: sonarqube
+  rule_id: S2077
+  category: security_injection
+  base_severity: CRITICAL
+  description: SQL injection
+
+- tool: sonarqube
+  rule_id: S2078
+  category: security_injection
+  base_severity: CRITICAL
+  description: LDAP injection
+
+- tool: sonarqube
+  rule_id: S2083
+  category: security
+  base_severity: HIGH
+  description: Path traversal
+
+- tool: sonarqube
+  rule_id: S2631
+  category: security_injection
+  base_severity: HIGH
+  description: XPath injection
+
+- tool: sonarqube
+  rule_id: S3330
+  category: security
+  base_severity: MEDIUM
+  description: Cookie without HttpOnly
+
+- tool: sonarqube
+  rule_id: S4502
+  category: security
+  base_severity: MEDIUM
+  description: CSRF vulnerability
+
+- tool: sonarqube
+  rule_id: S4790
+  category: security_crypto
+  base_severity: HIGH
+  description: Weak hash algorithm
+
+- tool: sonarqube
+  rule_id: S4829
+  category: reliability_error
+  base_severity: MEDIUM
+  description: User input in log
+
+- tool: sonarqube
+  rule_id: S5131
+  category: security_xss
+  base_severity: HIGH
+  description: XSS vulnerability
+
+- tool: sonarqube
+  rule_id: S5144
+  category: security
+  base_severity: HIGH
+  description: Server-side request forgery
+
+- tool: sonarqube
+  rule_id: S5145
+  category: security
+  base_severity: MEDIUM
+  description: Log injection
+
+- tool: sonarqube
+  rule_id: S5146
+  category: security
+  base_severity: HIGH
+  description: Open redirect

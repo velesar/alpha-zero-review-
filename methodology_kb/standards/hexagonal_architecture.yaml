@@ -1,0 +1,145 @@
+# Hexagonal Architecture Standard
+# Ports and Adapters pattern by Alistair Cockburn
+
+id: hexagonal_architecture
+name: Hexagonal Architecture (Ports and Adapters)
+description: >
+  Hexagonal Architecture (also known as Ports and Adapters) structures applications
+  around the core domain logic, with ports defining the boundaries and adapters
+  implementing the connections to external systems. This allows the core to be
+  tested in isolation and makes external systems easily replaceable.
+
+layers:
+  - name: domain
+    aliases:
+      - core
+      - business
+      - hexagon
+    typical_paths:
+      - src/domain
+      - src/core
+      - src/hexagon
+      - app/domain
+      - lib/domain
+    purpose: >
+      The core hexagon containing business logic. Completely independent
+      of external concerns. Defines ports (interfaces) that adapters implement.
+    allowed_dependencies: []
+
+  - name: ports
+    aliases:
+      - interfaces
+      - boundaries
+    typical_paths:
+      - src/ports
+      - src/domain/ports
+      - src/interfaces
+      - app/ports
+    purpose: >
+      Ports define the boundaries of the hexagon. Inbound ports (driving)
+      define how the application can be used. Outbound ports (driven)
+      define what the application needs from external systems.
+    allowed_dependencies:
+      - domain
+
+  - name: inbound_adapters
+    aliases:
+      - driving_adapters
+      - primary_adapters
+      - api
+      - web
+      - cli
+    typical_paths:
+      - src/adapters/inbound
+      - src/adapters/primary
+      - src/adapters/driving
+      - src/api
+      - src/web
+      - src/cli
+      - app/api
+    purpose: >
+      Inbound (driving) adapters convert external requests into calls
+      to the core. Examples: REST controllers, CLI handlers, GraphQL resolvers.
+    allowed_dependencies:
+      - domain
+      - ports
+
+  - name: outbound_adapters
+    aliases:
+      - driven_adapters
+      - secondary_adapters
+      - repositories
+      - gateways
+    typical_paths:
+      - src/adapters/outbound
+      - src/adapters/secondary
+      - src/adapters/driven
+      - src/repositories
+      - src/gateways
+      - app/repositories
+    purpose: >
+      Outbound (driven) adapters implement the outbound ports to connect
+      to external systems. Examples: database repositories, API clients, message queues.
+    allowed_dependencies:
+      - domain
+      - ports
+
+  - name: configuration
+    aliases:
+      - bootstrap
+      - wiring
+      - composition_root
+    typical_paths:
+      - src/config
+      - src/bootstrap
+      - src/main
+      - app/config
+    purpose: >
+      Configuration and composition root where all dependencies are wired together.
+      This is the only place that knows about all concrete implementations.
+    allowed_dependencies:
+      - domain
+      - ports
+      - inbound_adapters
+      - outbound_adapters
+
+dependency_rules:
+  - from: domain
+    to: ports
+    allowed: false
+    reason: Domain core defines ports, it doesn't depend on them
+
+  - from: domain
+    to: inbound_adapters
+    allowed: false
+    reason: Domain must not know about inbound adapters
+
+  - from: domain
+    to: outbound_adapters
+    allowed: false
+    reason: Domain must not know about outbound adapters
+
+  - from: domain
+    to: configuration
+    allowed: false
+    reason: Domain must not know about configuration
+
+  - from: ports
+    to: inbound_adapters
+    allowed: false
+    reason: Ports define interfaces, adapters implement them
+
+  - from: ports
+    to: outbound_adapters
+    allowed: false
+    reason: Ports define interfaces, adapters implement them
+
+  - from: inbound_adapters
+    to: outbound_adapters
+    allowed: false
+    reason: Adapters should communicate through the domain, not directly
+
+  - from: outbound_adapters
+    to: inbound_adapters
+    allowed: false
+    reason: Adapters should communicate through the domain, not directly

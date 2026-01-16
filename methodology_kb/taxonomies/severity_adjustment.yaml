@@ -1,0 +1,95 @@
+# Severity Adjustment Rules
+# Rules for adjusting finding severity based on context
+
+# Bounded Context Type Adjustments
+- condition:
+    type: bounded_context_type
+    value: core
+  multiplier: 1.5
+  description: Core bounded contexts contain critical business logic and deserve higher severity
+
+- condition:
+    type: bounded_context_type
+    value: supporting
+  multiplier: 1.0
+  description: Supporting contexts maintain baseline severity
+
+- condition:
+    type: bounded_context_type
+    value: generic
+  multiplier: 0.7
+  description: Generic contexts (utilities, infrastructure) get reduced severity
+
+# Architecture Layer Adjustments
+- condition:
+    type: layer_type
+    value: domain
+  multiplier: 1.3
+  description: Domain layer issues have higher business impact
+
+- condition:
+    type: layer_type
+    value: application
+  multiplier: 1.1
+  description: Application layer orchestrates use cases
+
+- condition:
+    type: layer_type
+    value: adapters
+  multiplier: 1.0
+  description: Adapter layer maintains baseline severity
+
+- condition:
+    type: layer_type
+    value: adapter
+  multiplier: 1.0
+  description: Adapter layer maintains baseline severity
+
+- condition:
+    type: layer_type
+    value: api
+  multiplier: 1.2
+  description: API layer exposes external attack surface
+
+- condition:
+    type: layer_type
+    value: infrastructure
+  multiplier: 0.9
+  description: Infrastructure layer typically has less business logic
+
+- condition:
+    type: layer_type
+    value: presentation
+  multiplier: 0.9
+  description: Presentation layer issues typically have lower impact
+
+# Hotspot Adjustment
+- condition:
+    type: is_hotspot
+  multiplier: 1.4
+  description: Known problematic files with high churn and complexity get elevated severity
+
+# Category-specific Adjustments
+- condition:
+    type: category_match
+    category: security
+  multiplier: 1.2
+  description: Security issues get elevated severity due to potential impact
+
+- condition:
+    type: category_match
+    category: security_injection
+  multiplier: 1.5
+  description: Injection vulnerabilities are high severity
+
+- condition:
+    type: category_match
+    category: reliability_concurrency
+  multiplier: 1.3
+  description: Concurrency issues are hard to debug and fix
+
+- condition:
+    type: category_match
+    category: architecture_circular
+  multiplier: 1.2
+  description: Circular dependencies indicate systemic issues

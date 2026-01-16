@@ -1,0 +1,226 @@
+# Thresholds by Project Type
+# Different project types have different quality expectations
+
+# Greenfield projects - new code should be high quality
+- project_type: greenfield
+  language: null
+  metrics:
+    cognitive_complexity:
+      healthy: 8
+      warning: 12
+      critical: 20
+    cyclomatic_complexity:
+      healthy: 8
+      warning: 15
+      critical: 30
+    test_coverage:
+      healthy: 85
+      warning: 70
+      critical: 50
+    branch_coverage:
+      healthy: 80
+      warning: 60
+      critical: 40
+    code_duplication:
+      healthy: 2
+      warning: 4
+      critical: 7
+    maintainability_index:
+      healthy: 70
+      warning: 50
+      critical: 30
+    technical_debt_ratio:
+      healthy: 3
+      warning: 7
+      critical: 15
+    vulnerability_count:
+      healthy: 0
+      warning: 0
+      critical: 1
+
+# Mature projects - established codebases with some technical debt
+- project_type: mature
+  language: null
+  metrics:
+    cognitive_complexity:
+      healthy: 10
+      warning: 15
+      critical: 25
+    cyclomatic_complexity:
+      healthy: 10
+      warning: 20
+      critical: 40
+    test_coverage:
+      healthy: 80
+      warning: 60
+      critical: 40
+    branch_coverage:
+      healthy: 75
+      warning: 50
+      critical: 30
+    code_duplication:
+      healthy: 3
+      warning: 5
+      critical: 10
+    maintainability_index:
+      healthy: 65
+      warning: 45
+      critical: 20
+    technical_debt_ratio:
+      healthy: 5
+      warning: 10
+      critical: 20
+    vulnerability_count:
+      healthy: 0
+      warning: 2
+      critical: 5
+
+# Legacy projects - older code with expected technical debt
+- project_type: legacy
+  language: null
+  metrics:
+    cognitive_complexity:
+      healthy: 15
+      warning: 25
+      critical: 40
+    cyclomatic_complexity:
+      healthy: 15
+      warning: 30
+      critical: 60
+    test_coverage:
+      healthy: 60
+      warning: 40
+      critical: 20
+    branch_coverage:
+      healthy: 50
+      warning: 30
+      critical: 15
+    code_duplication:
+      healthy: 5
+      warning: 10
+      critical: 20
+    maintainability_index:
+      healthy: 50
+      warning: 35
+      critical: 15
+    technical_debt_ratio:
+      healthy: 10
+      warning: 20
+      critical: 35
+    vulnerability_count:
+      healthy: 0
+      warning: 5
+      critical: 15
+
+# Startup projects - rapid iteration, some technical debt acceptable
+- project_type: startup
+  language: null
+  metrics:
+    cognitive_complexity:
+      healthy: 12
+      warning: 18
+      critical: 30
+    cyclomatic_complexity:
+      healthy: 12
+      warning: 25
+      critical: 45
+    test_coverage:
+      healthy: 70
+      warning: 50
+      critical: 30
+    branch_coverage:
+      healthy: 60
+      warning: 40
+      critical: 25
+    code_duplication:
+      healthy: 4
+      warning: 8
+      critical: 15
+    maintainability_index:
+      healthy: 55
+      warning: 40
+      critical: 25
+    technical_debt_ratio:
+      healthy: 8
+      warning: 15
+      critical: 25
+    vulnerability_count:
+      healthy: 0
+      warning: 1
+      critical: 3
+
+# Enterprise projects - high reliability and security requirements
+- project_type: enterprise
+  language: null
+  metrics:
+    cognitive_complexity:
+      healthy: 8
+      warning: 12
+      critical: 18
+    cyclomatic_complexity:
+      healthy: 8
+      warning: 15
+      critical: 25
+    test_coverage:
+      healthy: 90
+      warning: 80
+      critical: 60
+    branch_coverage:
+      healthy: 85
+      warning: 70
+      critical: 50
+    code_duplication:
+      healthy: 2
+      warning: 3
+      critical: 5
+    maintainability_index:
+      healthy: 75
+      warning: 60
+      critical: 40
+    technical_debt_ratio:
+      healthy: 3
+      warning: 5
+      critical: 10
+    vulnerability_count:
+      healthy: 0
+      warning: 0
+      critical: 1
+
+# Python-specific thresholds
+- project_type: mature
+  language: python
+  metrics:
+    cognitive_complexity:
+      healthy: 12
+      warning: 18
+      critical: 30
+    lines_of_code:
+      healthy: 250
+      warning: 400
+      critical: 800
+
+# TypeScript-specific thresholds
+- project_type: mature
+  language: typescript
+  metrics:
+    cognitive_complexity:
+      healthy: 10
+      warning: 15
+      critical: 25
+    lines_of_code:
+      healthy: 300
+      warning: 500
+      critical: 1000
+
+# Rust-specific thresholds (typically stricter)
+- project_type: mature
+  language: rust
+  metrics:
+    cognitive_complexity:
+      healthy: 8
+      warning: 12
+      critical: 20
+    lines_of_code:
+      healthy: 200
+      warning: 350
+      critical: 600

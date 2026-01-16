@@ -1,0 +1,221 @@
+# Metrics Glossary
+# Defines all metrics used in code quality analysis
+
+cognitive_complexity:
+  name: Cognitive Complexity
+  description: >
+    Measures how difficult code is to understand. Unlike cyclomatic complexity,
+    it accounts for nested structures and break in linear flow that affect
+    human comprehension.
+  category: maintainability
+  unit: score
+  direction: lower_is_better
+  thresholds:
+    default:
+      healthy: 10
+      warning: 15
+      critical: 25
+
+cyclomatic_complexity:
+  name: Cyclomatic Complexity
+  description: >
+    Counts the number of linearly independent paths through code.
+    Higher values indicate more complex control flow.
+  category: maintainability
+  unit: paths
+  direction: lower_is_better
+  thresholds:
+    default:
+      healthy: 10
+      warning: 20
+      critical: 40
+
+test_coverage:
+  name: Test Coverage
+  description: >
+    Percentage of code lines executed during automated tests.
+    Higher coverage indicates better test protection.
+  category: testability
+  unit: percentage
+  direction: higher_is_better
+  thresholds:
+    default:
+      healthy: 80
+      warning: 60
+      critical: 40
+
+branch_coverage:
+  name: Branch Coverage
+  description: >
+    Percentage of code branches (if/else, switch cases) covered by tests.
+    More thorough than line coverage.
+  category: testability
+  unit: percentage
+  direction: higher_is_better
+  thresholds:
+    default:
+      healthy: 75
+      warning: 50
+      critical: 30
+
+code_duplication:
+  name: Code Duplication
+  description: >
+    Percentage of code that is duplicated across the codebase.
+    High duplication increases maintenance burden.
+  category: maintainability
+  unit: percentage
+  direction: lower_is_better
+  thresholds:
+    default:
+      healthy: 3
+      warning: 5
+      critical: 10
+
+maintainability_index:
+  name: Maintainability Index
+  description: >
+    Composite metric (0-100) based on Halstead Volume, Cyclomatic Complexity,
+    and lines of code. Higher values indicate more maintainable code.
+  category: maintainability
+  unit: score
+  direction: higher_is_better
+  thresholds:
+    default:
+      healthy: 65
+      warning: 45
+      critical: 20
+
+lines_of_code:
+  name: Lines of Code (LOC)
+  description: >
+    Total count of source code lines excluding comments and blank lines.
+    Used as a sizing metric.
+  category: size
+  unit: lines
+  direction: lower_is_better
+  thresholds:
+    file:
+      healthy: 300
+      warning: 500
+      critical: 1000
+    function:
+      healthy: 30
+      warning: 50
+      critical: 100
+
+halstead_volume:
+  name: Halstead Volume
+  description: >
+    Measures the information content of code based on operators and operands.
+    Related to the mental effort required to understand code.
+  category: maintainability
+  unit: bits
+  direction: lower_is_better
+  thresholds:
+    default:
+      healthy: 1000
+      warning: 2000
+      critical: 4000
+
+technical_debt_ratio:
+  name: Technical Debt Ratio
+  description: >
+    Ratio of remediation cost to development cost. Expressed as percentage
+    of time needed to fix issues versus time spent writing code.
+  category: maintainability
+  unit: percentage
+  direction: lower_is_better
+  thresholds:
+    default:
+      healthy: 5
+      warning: 10
+      critical: 20
+
+code_churn:
+  name: Code Churn
+  description: >
+    Number of times code has been modified in a given period.
+    High churn combined with complexity indicates risk.
+  category: risk
+  unit: changes
+  direction: lower_is_better
+  thresholds:
+    monthly:
+      healthy: 5
+      warning: 15
+      critical: 30
+
+dependency_count:
+  name: Dependency Count
+  description: >
+    Number of external dependencies (packages/libraries) used.
+    More dependencies increase supply chain risk.
+  category: risk
+  unit: count
+  direction: lower_is_better
+  thresholds:
+    default:
+      healthy: 50
+      warning: 100
+      critical: 200
+
+security_hotspots:
+  name: Security Hotspots
+  description: >
+    Count of security-sensitive code locations that need manual review.
+    Different from vulnerabilities - requires human assessment.
+  category: security
+  unit: count
+  direction: lower_is_better
+  thresholds:
+    default:
+      healthy: 0
+      warning: 5
+      critical: 20
+
+vulnerability_count:
+  name: Vulnerabilities
+  description: >
+    Count of confirmed security vulnerabilities in code.
+    Critical and high severity issues need immediate attention.
+  category: security
+  unit: count
+  direction: lower_is_better
+  thresholds:
+    critical:
+      healthy: 0
+      warning: 0
+      critical: 1
+    high:
+      healthy: 0
+      warning: 3
+      critical: 10
+
+coupling:
+  name: Coupling
+  description: >
+    Degree of interdependence between modules. High coupling makes
+    code harder to change and test independently.
+  category: architecture
+  unit: score
+  direction: lower_is_better
+  thresholds:
+    default:
+      healthy: 5
+      warning: 10
+      critical: 20
+
+cohesion:
+  name: Cohesion
+  description: >
+    Degree to which elements within a module belong together.
+    Higher cohesion indicates better modular design.
+  category: architecture
+  unit: score
+  direction: higher_is_better
+  thresholds:
+    default:
+      healthy: 80
+      warning: 60
+      critical: 40
