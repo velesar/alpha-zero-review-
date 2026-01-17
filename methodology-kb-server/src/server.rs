@@ -6,11 +6,13 @@
 
 use crate::types::*;
 use anyhow::Result;
+use std::future::Future;
 use rmcp::{
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, Content, ServerCapabilities, ServerInfo, PaginatedRequestParam, ListToolsResult, ErrorData, CallToolRequestParam},
     schemars, tool,
-    handler::server::tool::ToolRouter,
+    handler::server::{tool::{ToolRouter, Parameters, ToolCallContext}, ServerHandler},
     tool_router,
+    service::{RequestContext, RoleServer},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -189,7 +191,8 @@ impl MethodologyKBServer {
 
     /// Look up a metric definition and thresholds
     #[tool(description = "Look up a metric definition including description, thresholds, and interpretation guidance.")]
-    async fn lookup_metric(&self, #[tool(aggr)] input: LookupMetricInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn lookup_metric(&self, input: Parameters<LookupMetricInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let metric = self.kb.metrics.get(&input.metric).cloned();
 
         if let Some(mut metric) = metric {
@@ -229,7 +232,8 @@ impl MethodologyKBServer {
 
     /// Classify a finding with context-aware severity adjustment
     #[tool(description = "Classify a finding and calculate adjusted severity based on context (bounded context type, layer, hotspot status).")]
-    async fn classify_finding(&self, #[tool(aggr)] input: ClassifyFindingInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn classify_finding(&self, input: Parameters<ClassifyFindingInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let mut category = input.category.clone();
         let mut base_severity = input.base_severity.clone();
 
@@ -322,7 +326,8 @@ impl MethodologyKBServer {
 
     /// Get thresholds for a project type
     #[tool(description = "Get all metric thresholds for a specific project type and optionally language.")]
-    async fn get_thresholds(&self, #[tool(aggr)] input: GetThresholdsInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_thresholds(&self, input: Parameters<GetThresholdsInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let project_type = match input.project_type.to_lowercase().as_str() {
             "greenfield" => ProjectType::Greenfield,
             "mature" => ProjectType::Mature,
@@ -370,12 +375,13 @@ impl MethodologyKBServer {
 
     /// Check compliance against an architecture standard
     #[tool(description = "Check if a detected architecture pattern complies with a standard (clean_architecture, layered, hexagonal).")]
-    async fn check_compliance(&self, #[tool(aggr)] input: CheckComplianceInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn check_compliance(&self, input: Parameters<CheckComplianceInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let standard = self.kb.standards.get(&input.standard);
 
         if let Some(standard) = standard {
             let mut violations = Vec::new();
-            let mut score = 100.0;
+            let mut score: f64 = 100.0;
 
             // Parse detected pattern
             let detected_layers: Vec<String> = input.detected_pattern
@@ -453,7 +459,8 @@ impl MethodologyKBServer {
 
     /// Get a report template
     #[tool(description = "Get a report template for generating audit outputs (executive_summary, root_cause, technical_details).")]
-    async fn get_template(&self, #[tool(aggr)] input: GetTemplateInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_template(&self, input: Parameters<GetTemplateInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let template = self.kb.templates.get(&input.template_type);
 
         if let Some(template) = template {
@@ -496,7 +503,8 @@ impl MethodologyKBServer {
 
     /// Get category information
     #[tool(description = "Get detailed information about a finding category.")]
-    async fn get_category(&self, #[tool(aggr)] category: String) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_category(&self, category: Parameters<String>) -> Result<CallToolResult, rmcp::Error> {
+        let category = category.0;
         let cat = self.kb.categories.get(&category);
 
         if let Some(cat) = cat {
@@ -514,32 +522,40 @@ impl MethodologyKBServer {
     }
 }
 
-impl rmcp::ServerHandler for MethodologyKBServer {
+impl ServerHandler for MethodologyKBServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            name: "methodology-kb".into(),
-            version: "0.1.0".into(),
+            server_info: rmcp::model::Implementation {
+                name: "methodology-kb".into(),
+                version: "0.1.0".into(),
+            },
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .build(),
             instructions: Some("Methodology Knowledge Base MCP Server for AI Code Audit. Use this server to look up metrics, classify findings, check compliance, and get report templates.".into()),
             ..Default::default()
         }
     }
 
-    fn get_capabilities(&self) -> ServerCapabilities {
-        ServerCapabilities::builder()
-            .enable_tools()
-            .build()
-    }
-
     fn list_tools(
         &self,
-    ) -> Vec<rmcp::model::Tool> {
-        self.tool_router.list_tools()
+        _pagination: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
+        async move {
+            Ok(ListToolsResult {
+                tools: self.tool_router.list_all(),
+                next_cursor: None,
+            })
+        }
     }
 
     fn call_tool(
         &self,
-        request: rmcp::model::CallToolRequestParams,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::Error>> + Send + '_ {
-        self.tool_router.call_tool(self, request)
+        request: CallToolRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<CallToolResult, ErrorData>> + Send + '_ {
+        let tool_context = ToolCallContext::new(self, request, context);
+        self.tool_router.call(tool_context)
     }
 }

@@ -5,11 +5,13 @@
 
 use crate::model::{derive_constraints, Constraints, Finding, FindingContext, MentalModel, RootCause, Severity};
 use anyhow::Result;
+use std::future::Future;
 use rmcp::{
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, Content, ServerCapabilities, ServerInfo, PaginatedRequestParam, ListToolsResult, ErrorData, CallToolRequestParam},
     schemars, tool,
-    handler::server::tool::ToolRouter,
+    handler::server::{tool::{ToolRouter, Parameters, ToolCallContext}, ServerHandler},
     tool_router,
+    service::{RequestContext, RoleServer},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -118,7 +120,8 @@ impl MentalModelServer {
 
     /// Initialize a new mental model for a project
     #[tool(description = "Initialize a new mental model for a project. Call this before starting an audit.")]
-    async fn init_model(&self, #[tool(aggr)] input: InitModelInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn init_model(&self, input: Parameters<InitModelInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let mut model = self.model.write().map_err(|e| {
             rmcp::Error::internal_error(format!("Lock error: {}", e), None)
         })?;
@@ -153,7 +156,8 @@ impl MentalModelServer {
 
     /// Update the mental model with viewpoint results
     #[tool(description = "Update the mental model with results from a viewpoint analysis. This will also recalculate derived constraints.")]
-    async fn update_viewpoint(&self, #[tool(aggr)] input: UpdateViewpointInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn update_viewpoint(&self, input: Parameters<UpdateViewpointInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let mut model = self.model.write().map_err(|e| {
             rmcp::Error::internal_error(format!("Lock error: {}", e), None)
         })?;
@@ -182,7 +186,8 @@ impl MentalModelServer {
 
     /// Get business context for a file path
     #[tool(description = "Get business context for a specific file path. Returns bounded context type, architecture layer, and hotspot status.")]
-    async fn get_context(&self, #[tool(aggr)] input: GetContextInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_context(&self, input: Parameters<GetContextInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let model = self.model.read().map_err(|e| {
             rmcp::Error::internal_error(format!("Lock error: {}", e), None)
         })?;
@@ -212,7 +217,8 @@ impl MentalModelServer {
 
     /// Add a finding with automatic context enrichment
     #[tool(description = "Add a finding from quality analysis. The finding will be automatically enriched with context from the mental model and severity will be adjusted.")]
-    async fn add_finding(&self, #[tool(aggr)] input: AddFindingInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn add_finding(&self, input: Parameters<AddFindingInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let mut model = self.model.write().map_err(|e| {
             rmcp::Error::internal_error(format!("Lock error: {}", e), None)
         })?;
@@ -289,7 +295,8 @@ impl MentalModelServer {
 
     /// Synthesize findings into root causes
     #[tool(description = "Cluster findings into root causes. This analyzes patterns across findings to identify underlying issues.")]
-    async fn synthesize(&self, #[tool(aggr)] input: SynthesizeInput) -> Result<CallToolResult, rmcp::Error> {
+    async fn synthesize(&self, input: Parameters<SynthesizeInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
         let mut model = self.model.write().map_err(|e| {
             rmcp::Error::internal_error(format!("Lock error: {}", e), None)
         })?;
@@ -334,33 +341,41 @@ impl MentalModelServer {
     }
 }
 
-impl rmcp::ServerHandler for MentalModelServer {
+impl ServerHandler for MentalModelServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            name: "mental-model".into(),
-            version: "0.1.0".into(),
+            server_info: rmcp::model::Implementation {
+                name: "mental-model".into(),
+                version: "0.1.0".into(),
+            },
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .build(),
             instructions: Some("Mental Model MCP Server for AI Code Audit. Use this server to manage the central mental model artifact that accumulates understanding throughout the audit process.".into()),
             ..Default::default()
         }
     }
 
-    fn get_capabilities(&self) -> ServerCapabilities {
-        ServerCapabilities::builder()
-            .enable_tools()
-            .build()
-    }
-
     fn list_tools(
         &self,
-    ) -> Vec<rmcp::model::Tool> {
-        self.tool_router.list_tools()
+        _pagination: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
+        async move {
+            Ok(ListToolsResult {
+                tools: self.tool_router.list_all(),
+                next_cursor: None,
+            })
+        }
     }
 
     fn call_tool(
         &self,
-        request: rmcp::model::CallToolRequestParams,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::Error>> + Send + '_ {
-        self.tool_router.call_tool(self, request)
+        request: CallToolRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<CallToolResult, ErrorData>> + Send + '_ {
+        let tool_context = ToolCallContext::new(self, request, context);
+        self.tool_router.call(tool_context)
     }
 }
 
