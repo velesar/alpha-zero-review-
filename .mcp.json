@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "mental-model": {
+      "command": "/home/velesar/projects/alpha-zero-review-/target/release/mental-model-server",
+      "args": [
+        "--model-path",
+        "./mental_model.yaml"
+      ]
+    },
+    "methodology-kb": {
+      "command": "/home/velesar/projects/alpha-zero-review-/target/release/methodology-kb-server",
+      "args": [
+        "--kb-path",
+        "/home/velesar/projects/alpha-zero-review-/methodology_kb/"
+      ]
+    }
+  }
+}
