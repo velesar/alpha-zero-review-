@@ -1,10 +1,31 @@
 # MCP Handler Refactoring Plan
 
+**Status: COMPLETED**
+
 ## Overview
 
 Refactor MCP server handlers to improve testability by extracting business logic into pure functions, making handlers thin wrappers that only handle input parsing and response formatting.
 
-## Current State
+## Implementation Summary
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Create utils.rs with response formatting | ✅ Complete |
+| Phase 2 | Create error.rs with domain error types | ✅ Complete |
+| Phase 3a | Extract sarif-tools-server business logic | ✅ Complete |
+| Phase 3b | Extract mental-model-server business logic | ✅ Complete |
+| Phase 3c | Extract methodology-kb/codegraph business logic | ✅ Complete |
+
+## Files Created
+
+| Server | utils.rs | error.rs | ops.rs |
+|--------|----------|----------|--------|
+| sarif-tools-server | ✅ | ✅ | ✅ (11 tests) |
+| mental-model-server | ✅ | ✅ | ✅ (9 tests) |
+| methodology-kb-server | ✅ | ✅ | ✅ (8 tests) |
+| codegraph-server | ✅ | ✅ | ✅ (5 tests) |
+
+## Original State
 
 | Server | Handler Coverage | Business Logic Location | Issue |
 |--------|------------------|------------------------|-------|
