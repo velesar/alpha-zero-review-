@@ -3,6 +3,7 @@
 //! This crate provides the core functionality for the SARIF Tools MCP server,
 //! which runs code analysis tools and works with SARIF output format.
 
+pub mod domain;
 pub mod error;
 pub mod ops;
 pub mod sarif;

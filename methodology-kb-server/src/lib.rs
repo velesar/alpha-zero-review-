@@ -4,6 +4,7 @@
 //! which interprets metrics, classifies findings, and checks compliance against standards.
 
 pub mod acquisition;
+pub mod domain;
 pub mod error;
 pub mod ops;
 pub mod server;

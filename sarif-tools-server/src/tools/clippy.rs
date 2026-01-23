@@ -2,6 +2,7 @@
 //!
 //! Runs cargo clippy and converts JSON output to SARIF format.
 
+use crate::domain::{ConfigValue, ToolConfig};
 use crate::runner::{detect_tool, get_tool_version, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::{
     ArtifactLocation, Location, Message, PhysicalLocation, Region, Result as SarifResult, Run,
@@ -76,7 +77,7 @@ impl ToolRunner for ClippyRunner {
         vec!["rust".to_string()]
     }
 
-    fn run(&self, path: &Path, config: Option<&serde_json::Value>) -> Result<ToolResult, RunnerError> {
+    fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {
         if !self.is_available() {
             return Err(RunnerError::ToolNotFound("cargo".to_string()));
         }
@@ -89,31 +90,29 @@ impl ToolRunner for ClippyRunner {
         // Apply configuration
         if let Some(cfg) = config {
             // All targets flag
-            if cfg.get("all_targets").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if let Some(ConfigValue::Bool(true)) = cfg.options.get("all_targets") {
                 cmd.arg("--all-targets");
             }
 
             // All features flag
-            if cfg.get("all_features").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if let Some(ConfigValue::Bool(true)) = cfg.options.get("all_features") {
                 cmd.arg("--all-features");
             }
 
-            // Specific features
-            if let Some(features) = cfg.get("features").and_then(|v| v.as_str()) {
+            // Specific features from options
+            if let Some(ConfigValue::String(features)) = cfg.options.get("features") {
                 cmd.arg("--features").arg(features);
             }
 
             // Deny warnings
-            if cfg.get("deny_warnings").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if let Some(ConfigValue::Bool(true)) = cfg.options.get("deny_warnings") {
                 cmd.arg("--").arg("-D").arg("warnings");
             }
 
-            // Specific lints to allow/warn/deny
-            if let Some(deny) = cfg.get("deny").and_then(|v| v.as_array()) {
-                for lint in deny {
-                    if let Some(lint_name) = lint.as_str() {
-                        cmd.arg("--").arg("-D").arg(lint_name);
-                    }
+            // Specific lints to deny from options (as array)
+            if let Some(ConfigValue::Array(deny_lints)) = cfg.options.get("deny") {
+                for lint_name in deny_lints {
+                    cmd.arg("--").arg("-D").arg(lint_name);
                 }
             }
         }

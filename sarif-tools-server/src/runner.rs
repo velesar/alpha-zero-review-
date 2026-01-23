@@ -3,6 +3,7 @@
 //! Provides a common interface for running code analysis tools
 //! and capturing their SARIF output.
 
+use crate::domain::ToolConfig;
 use crate::sarif::Sarif;
 use std::path::Path;
 use std::process::Command;
@@ -51,7 +52,7 @@ pub trait ToolRunner: Send + Sync {
     fn supported_languages(&self) -> Vec<String>;
 
     /// Run the tool on a path
-    fn run(&self, path: &Path, config: Option<&serde_json::Value>) -> Result<ToolResult, RunnerError>;
+    fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError>;
 }
 
 /// Check if a tool is available on the system

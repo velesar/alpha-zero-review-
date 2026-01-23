@@ -2,6 +2,7 @@
 //!
 //! Runs Bandit Python security analysis with SARIF output.
 
+use crate::domain::{ConfigValue, ToolConfig};
 use crate::runner::{detect_tool, get_tool_version, parse_sarif, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::Sarif;
 use std::path::Path;
@@ -28,7 +29,7 @@ impl ToolRunner for BanditRunner {
         vec!["python".to_string()]
     }
 
-    fn run(&self, path: &Path, config: Option<&serde_json::Value>) -> Result<ToolResult, RunnerError> {
+    fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {
         if !self.is_available() {
             return Err(RunnerError::ToolNotFound("bandit".to_string()));
         }
@@ -46,7 +47,7 @@ impl ToolRunner for BanditRunner {
         // Apply configuration
         if let Some(cfg) = config {
             // Severity filter (l = low and above, m = medium and above, h = high only)
-            if let Some(severity) = cfg.get("severity").and_then(|v| v.as_str()) {
+            if let Some(ref severity) = cfg.severity {
                 match severity.to_lowercase().as_str() {
                     "low" => cmd.arg("-l"),
                     "medium" => cmd.arg("-ll"),
@@ -55,8 +56,8 @@ impl ToolRunner for BanditRunner {
                 };
             }
 
-            // Confidence filter
-            if let Some(confidence) = cfg.get("confidence").and_then(|v| v.as_str()) {
+            // Confidence filter from options
+            if let Some(ConfigValue::String(confidence)) = cfg.options.get("confidence") {
                 match confidence.to_lowercase().as_str() {
                     "low" => cmd.arg("-i"),
                     "medium" => cmd.arg("-ii"),
@@ -65,18 +66,18 @@ impl ToolRunner for BanditRunner {
                 };
             }
 
-            // Exclude paths
-            if let Some(exclude) = cfg.get("exclude").and_then(|v| v.as_str()) {
-                cmd.arg("-x").arg(exclude);
+            // Exclude paths (join patterns with comma for bandit)
+            if !cfg.exclude_patterns.is_empty() {
+                cmd.arg("-x").arg(cfg.exclude_patterns.join(","));
             }
 
-            // Skip specific tests
-            if let Some(skip) = cfg.get("skip").and_then(|v| v.as_str()) {
+            // Skip specific tests from options
+            if let Some(ConfigValue::String(skip)) = cfg.options.get("skip") {
                 cmd.arg("-s").arg(skip);
             }
 
             // Config file
-            if let Some(config_file) = cfg.get("config").and_then(|v| v.as_str()) {
+            if let Some(ref config_file) = cfg.config_source {
                 cmd.arg("-c").arg(config_file);
             }
         }

@@ -2,6 +2,7 @@
 //!
 //! Runs Semgrep static analysis with SARIF output.
 
+use crate::domain::ToolConfig;
 use crate::runner::{detect_tool, get_tool_version, parse_sarif, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::Sarif;
 use std::path::Path;
@@ -32,7 +33,7 @@ impl ToolRunner for SemgrepRunner {
         ].into_iter().map(String::from).collect()
     }
 
-    fn run(&self, path: &Path, config: Option<&serde_json::Value>) -> Result<ToolResult, RunnerError> {
+    fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {
         if !self.is_available() {
             return Err(RunnerError::ToolNotFound("semgrep".to_string()));
         }
@@ -48,26 +49,20 @@ impl ToolRunner for SemgrepRunner {
 
         // Apply custom config if provided
         if let Some(cfg) = config {
-            if let Some(rules) = cfg.get("rules").and_then(|v| v.as_str()) {
-                cmd.arg("--config").arg(rules);
-            } else if let Some(config_file) = cfg.get("config").and_then(|v| v.as_str()) {
-                cmd.arg("--config").arg(config_file);
+            if let Some(ref config_source) = cfg.config_source {
+                cmd.arg("--config").arg(config_source);
             } else {
                 cmd.arg("--config").arg("auto");
             }
 
             // Severity filter
-            if let Some(severity) = cfg.get("severity").and_then(|v| v.as_str()) {
+            if let Some(ref severity) = cfg.severity {
                 cmd.arg("--severity").arg(severity);
             }
 
             // Exclude patterns
-            if let Some(exclude) = cfg.get("exclude").and_then(|v| v.as_array()) {
-                for pattern in exclude {
-                    if let Some(p) = pattern.as_str() {
-                        cmd.arg("--exclude").arg(p);
-                    }
-                }
+            for pattern in &cfg.exclude_patterns {
+                cmd.arg("--exclude").arg(pattern);
             }
         } else {
             cmd.arg("--config").arg("auto");
