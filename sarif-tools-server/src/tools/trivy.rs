@@ -2,6 +2,7 @@
 //!
 //! Runs Trivy vulnerability scanner with SARIF output.
 
+use crate::domain::{ConfigValue, ToolConfig};
 use crate::runner::{detect_tool, get_tool_version, parse_sarif_bytes, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::Sarif;
 use std::path::Path;
@@ -31,7 +32,7 @@ impl ToolRunner for TrivyRunner {
         ].into_iter().map(String::from).collect()
     }
 
-    fn run(&self, path: &Path, config: Option<&serde_json::Value>) -> Result<ToolResult, RunnerError> {
+    fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {
         if !self.is_available() {
             return Err(RunnerError::ToolNotFound("trivy".to_string()));
         }
@@ -44,38 +45,38 @@ impl ToolRunner for TrivyRunner {
 
         // Apply configuration
         if let Some(cfg) = config {
-            // Scanners (vuln, misconfig, secret, license)
-            if let Some(scanners) = cfg.get("scanners").and_then(|v| v.as_str()) {
+            // Scanners (vuln, misconfig, secret, license) from options
+            if let Some(ConfigValue::String(scanners)) = cfg.options.get("scanners") {
                 cmd.arg("--scanners").arg(scanners);
             }
 
             // Severity filter
-            if let Some(severity) = cfg.get("severity").and_then(|v| v.as_str()) {
+            if let Some(ref severity) = cfg.severity {
                 cmd.arg("--severity").arg(severity);
             }
 
-            // Ignore unfixed vulnerabilities
-            if cfg.get("ignore_unfixed").and_then(|v| v.as_bool()).unwrap_or(false) {
+            // Ignore unfixed vulnerabilities from options
+            if let Some(ConfigValue::Bool(true)) = cfg.options.get("ignore_unfixed") {
                 cmd.arg("--ignore-unfixed");
             }
 
-            // Skip directories
-            if let Some(skip_dirs) = cfg.get("skip_dirs").and_then(|v| v.as_str()) {
-                cmd.arg("--skip-dirs").arg(skip_dirs);
+            // Skip directories (using exclude_patterns)
+            if !cfg.exclude_patterns.is_empty() {
+                cmd.arg("--skip-dirs").arg(cfg.exclude_patterns.join(","));
             }
 
-            // Skip files
-            if let Some(skip_files) = cfg.get("skip_files").and_then(|v| v.as_str()) {
+            // Skip files from options
+            if let Some(ConfigValue::String(skip_files)) = cfg.options.get("skip_files") {
                 cmd.arg("--skip-files").arg(skip_files);
             }
 
             // Config file
-            if let Some(config_file) = cfg.get("config").and_then(|v| v.as_str()) {
+            if let Some(ref config_file) = cfg.config_source {
                 cmd.arg("--config").arg(config_file);
             }
 
-            // Timeout
-            if let Some(timeout) = cfg.get("timeout").and_then(|v| v.as_str()) {
+            // Timeout from options
+            if let Some(ConfigValue::String(timeout)) = cfg.options.get("timeout") {
                 cmd.arg("--timeout").arg(timeout);
             }
         }

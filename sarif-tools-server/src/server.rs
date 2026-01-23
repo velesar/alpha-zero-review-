@@ -2,11 +2,17 @@
 //!
 //! This module implements the MCP server that provides tools for
 //! running code analysis tools and working with SARIF output.
+//!
+//! This is the adapter layer that bridges MCP protocol to domain operations.
 
+use crate::domain::RuleMappings;
 use crate::ops;
 use crate::sarif::Sarif;
 use crate::tools::{ToolInfo, ToolRegistry};
-use crate::utils::{format_json_response, format_prefixed_json_response};
+use crate::utils::{
+    format_json_response, format_prefixed_json_response,
+    json_to_tool_config, load_rule_mappings, parse_sarif_values, parse_sarif_json,
+};
 use rmcp::{
     handler::server::{
         tool::{Parameters, ToolCallContext, ToolRouter},
@@ -21,7 +27,6 @@ use rmcp::{
     tool, tool_router,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 
@@ -114,7 +119,10 @@ impl SarifToolsServer {
 
         tracing::info!("Running {} on {}", input.tool, input.path);
 
-        let result = ops::execute_tool(&self.registry, &input.tool, &path, input.config.as_ref())?;
+        // Adapter: Convert JSON config to domain type
+        let tool_config = input.config.as_ref().map(json_to_tool_config);
+
+        let result = ops::execute_tool(&self.registry, &input.tool, &path, tool_config.as_ref())?;
 
         let output = RunToolOutput {
             sarif: result.sarif,
@@ -145,7 +153,10 @@ impl SarifToolsServer {
         &self,
         input: Parameters<MergeSarifInput>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let result = ops::merge_sarif_files(input.0.sarif_files)?;
+        // Adapter: Parse JSON values to Sarif domain types
+        let sarif_files = parse_sarif_values(input.0.sarif_files)?;
+
+        let result = ops::merge_sarif_files(sarif_files);
 
         let output = MergeSarifOutput {
             combined: result.combined,
@@ -166,18 +177,19 @@ impl SarifToolsServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
-        let sarif = ops::parse_sarif(input.sarif)?;
+        // Adapter: Parse JSON to Sarif domain type
+        let sarif = parse_sarif_json(input.sarif)?;
 
-        // Load rule mappings
+        // Adapter: Load rule mappings to domain type
         let mappings_path = input
             .rule_mappings
             .map(PathBuf::from)
             .or_else(|| self.mappings_path.clone());
 
         let mappings = if let Some(path) = mappings_path {
-            ops::load_rule_mappings(&path)?
+            load_rule_mappings(&path)?
         } else {
-            HashMap::new()
+            RuleMappings::new()
         };
 
         let result = ops::normalize_sarif(sarif, &mappings);

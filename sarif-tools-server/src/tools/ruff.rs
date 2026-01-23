@@ -2,6 +2,7 @@
 //!
 //! Runs Ruff Python linter with SARIF output.
 
+use crate::domain::{ConfigValue, ToolConfig};
 use crate::runner::{detect_tool, get_tool_version, parse_sarif_bytes, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::Sarif;
 use std::path::Path;
@@ -27,7 +28,7 @@ impl ToolRunner for RuffRunner {
         vec!["python".to_string()]
     }
 
-    fn run(&self, path: &Path, config: Option<&serde_json::Value>) -> Result<ToolResult, RunnerError> {
+    fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {
         if !self.is_available() {
             return Err(RunnerError::ToolNotFound("ruff".to_string()));
         }
@@ -40,33 +41,33 @@ impl ToolRunner for RuffRunner {
 
         // Apply configuration
         if let Some(cfg) = config {
-            // Select specific rules
-            if let Some(select) = cfg.get("select").and_then(|v| v.as_str()) {
+            // Select specific rules from options
+            if let Some(ConfigValue::String(select)) = cfg.options.get("select") {
                 cmd.arg("--select").arg(select);
             }
 
-            // Ignore specific rules
-            if let Some(ignore) = cfg.get("ignore").and_then(|v| v.as_str()) {
+            // Ignore specific rules from options
+            if let Some(ConfigValue::String(ignore)) = cfg.options.get("ignore") {
                 cmd.arg("--ignore").arg(ignore);
             }
 
-            // Exclude patterns
-            if let Some(exclude) = cfg.get("exclude").and_then(|v| v.as_str()) {
-                cmd.arg("--exclude").arg(exclude);
+            // Exclude patterns (join with comma for ruff)
+            if !cfg.exclude_patterns.is_empty() {
+                cmd.arg("--exclude").arg(cfg.exclude_patterns.join(","));
             }
 
             // Config file
-            if let Some(config_file) = cfg.get("config").and_then(|v| v.as_str()) {
+            if let Some(ref config_file) = cfg.config_source {
                 cmd.arg("--config").arg(config_file);
             }
 
-            // Line length
-            if let Some(line_length) = cfg.get("line_length").and_then(|v| v.as_u64()) {
-                cmd.arg("--line-length").arg(line_length.to_string());
+            // Line length from options
+            if let Some(ConfigValue::Number(line_length)) = cfg.options.get("line_length") {
+                cmd.arg("--line-length").arg((*line_length as u64).to_string());
             }
 
-            // Target version
-            if let Some(target) = cfg.get("target_version").and_then(|v| v.as_str()) {
+            // Target version from options
+            if let Some(ConfigValue::String(target)) = cfg.options.get("target_version") {
                 cmd.arg("--target-version").arg(target);
             }
         }

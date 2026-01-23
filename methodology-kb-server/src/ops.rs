@@ -2,11 +2,13 @@
 //!
 //! This module contains pure functions extracted from MCP handlers
 //! to enable unit testing without rmcp infrastructure.
+//!
+//! **Domain purity:** This module uses only domain types and avoids
+//! framework dependencies like serde_json in function signatures.
+//! Serialization/deserialization happens at adapter boundaries.
 
-use crate::types::{
-    ArchitectureStandard, CategoryDefinition, MetricDefinition, ThresholdSet, ThresholdValue,
-};
-use std::collections::HashMap;
+use crate::domain::{DetectedViolation, RuleMappingsIndex};
+use crate::types::ArchitectureStandard;
 
 /// Severity score mapping
 pub fn severity_to_score(severity: &str) -> f64 {
@@ -36,6 +38,8 @@ pub fn score_to_severity(score: f64) -> String {
 }
 
 /// Classification result
+///
+/// Note: serde::Serialize is needed for MCP response formatting.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ClassificationResult {
     pub category: String,
@@ -54,13 +58,15 @@ pub struct ClassificationContext {
 }
 
 /// Classify a finding based on context
+///
+/// Uses domain types instead of serde_json::Value.
 pub fn classify_finding(
     tool: Option<&str>,
     rule_id: Option<&str>,
     category: Option<&str>,
     base_severity: Option<&str>,
     context: Option<&ClassificationContext>,
-    rule_mappings: &HashMap<String, serde_json::Value>,
+    rule_mappings: &RuleMappingsIndex,
 ) -> ClassificationResult {
     let mut result_category = category.map(String::from);
     let mut result_severity = base_severity.map(String::from);
@@ -68,19 +74,12 @@ pub fn classify_finding(
     // Try to get category from rule mapping
     if result_category.is_none() || result_severity.is_none() {
         if let (Some(t), Some(r)) = (tool, rule_id) {
-            let key = format!("{}:{}", t.to_lowercase(), r);
-            if let Some(mapping) = rule_mappings.get(&key) {
+            if let Some(mapping) = rule_mappings.get(t, r) {
                 if result_category.is_none() {
-                    result_category = mapping
-                        .get("category")
-                        .and_then(|v| v.as_str())
-                        .map(String::from);
+                    result_category = Some(mapping.category.clone());
                 }
                 if result_severity.is_none() {
-                    result_severity = mapping
-                        .get("base_severity")
-                        .and_then(|v| v.as_str())
-                        .map(String::from);
+                    result_severity = mapping.base_severity.clone();
                 }
             }
         }
@@ -159,6 +158,8 @@ fn calculate_adjustments(category: &str, context: &ClassificationContext) -> (f6
 }
 
 /// Compliance check result
+///
+/// Note: serde::Serialize is needed for MCP response formatting.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ComplianceResult {
     pub standard: String,
@@ -169,6 +170,8 @@ pub struct ComplianceResult {
 }
 
 /// A compliance violation
+///
+/// Note: serde::Serialize is needed for MCP response formatting.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ComplianceViolation {
     pub rule: String,
@@ -178,10 +181,12 @@ pub struct ComplianceViolation {
 }
 
 /// Check compliance against a standard
+///
+/// Uses domain types instead of serde_json::Value.
 pub fn check_compliance(
     standard: &ArchitectureStandard,
     detected_layers: &[String],
-    detected_violations: &[serde_json::Value],
+    detected_violations: &[DetectedViolation],
 ) -> ComplianceResult {
     let mut violations = Vec::new();
     let mut score: f64 = 100.0;
@@ -205,23 +210,13 @@ pub fn check_compliance(
 
     // Process detected violations
     for violation in detected_violations {
-        if let Some(desc) = violation.get("description").and_then(|v| v.as_str()) {
-            violations.push(ComplianceViolation {
-                rule: violation
-                    .get("rule")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("dependency_violation")
-                    .to_string(),
-                description: desc.to_string(),
-                severity: violation
-                    .get("severity")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("MEDIUM")
-                    .to_string(),
-                location: violation.get("location").and_then(|v| v.as_str()).map(String::from),
-            });
-            score -= 10.0;
-        }
+        violations.push(ComplianceViolation {
+            rule: violation.rule.clone(),
+            description: violation.description.clone(),
+            severity: violation.severity.clone(),
+            location: violation.location.clone(),
+        });
+        score -= 10.0;
     }
 
     let recommendations = generate_compliance_recommendations(score);
@@ -261,6 +256,7 @@ fn generate_compliance_recommendations(score: f64) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::RuleMapping;
 
     #[test]
     fn test_severity_to_score() {
@@ -282,7 +278,7 @@ mod tests {
 
     #[test]
     fn test_classify_finding_defaults() {
-        let result = classify_finding(None, None, None, None, None, &HashMap::new());
+        let result = classify_finding(None, None, None, None, None, &RuleMappingsIndex::new());
         assert_eq!(result.category, "unknown");
         assert_eq!(result.base_severity, "MEDIUM");
         assert_eq!(result.total_multiplier, 1.0);
@@ -302,12 +298,38 @@ mod tests {
             Some("security"),
             Some("MEDIUM"),
             Some(&context),
-            &HashMap::new(),
+            &RuleMappingsIndex::new(),
         );
 
         // 1.5 (core) * 1.3 (domain) * 1.4 (hotspot) * 1.2 (security) = 3.276
         assert!(result.total_multiplier > 3.0);
         assert_eq!(result.adjusted_severity, "CRITICAL");
+    }
+
+    #[test]
+    fn test_classify_finding_with_rule_mappings() {
+        let mapping = RuleMapping {
+            tool: "semgrep".to_string(),
+            rule_id: "python.security.eval".to_string(),
+            category: "security".to_string(),
+            base_severity: Some("HIGH".to_string()),
+            description: None,
+        };
+
+        let mut mappings = RuleMappingsIndex::new();
+        mappings.insert(mapping);
+
+        let result = classify_finding(
+            Some("semgrep"),
+            Some("python.security.eval"),
+            None,
+            None,
+            None,
+            &mappings,
+        );
+
+        assert_eq!(result.category, "security");
+        assert_eq!(result.base_severity, "HIGH");
     }
 
     #[test]
@@ -324,5 +346,34 @@ mod tests {
         assert_eq!(generate_compliance_recommendations(75.0).len(), 2);
         assert_eq!(generate_compliance_recommendations(60.0).len(), 3);
         assert_eq!(generate_compliance_recommendations(30.0).len(), 3);
+    }
+
+    #[test]
+    fn test_check_compliance_with_violations() {
+        use crate::types::{ArchitectureStandard, StandardLayer};
+
+        let standard = ArchitectureStandard {
+            id: "test".to_string(),
+            name: "Test Standard".to_string(),
+            description: "A test standard".to_string(),
+            layers: vec![StandardLayer {
+                name: "domain".to_string(),
+                aliases: vec![],
+                typical_paths: vec![],
+                purpose: "Business logic".to_string(),
+                allowed_dependencies: vec![],
+            }],
+            dependency_rules: vec![],
+        };
+
+        let violations = vec![
+            DetectedViolation::new("test_rule", "Test violation").with_severity("HIGH"),
+        ];
+
+        let result = check_compliance(&standard, &["domain".to_string()], &violations);
+
+        assert!(!result.compliant);
+        assert!(result.score < 100.0);
+        assert_eq!(result.violations.len(), 1);
     }
 }
