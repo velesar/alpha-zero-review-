@@ -5,6 +5,7 @@
 
 pub mod acquisition;
 pub mod error;
+pub mod ops;
 pub mod server;
 pub mod types;
 pub mod utils;
