@@ -1,0 +1,31 @@
+commit: 0133109
+commit_full: 01331097c7bac3405ab0453c389ec5
+branch: claude/beta-zero-test-plan-NWD22
+timestamp: "2026-01-23T14:30:00Z"
+audit_type: self-audit
+producer: ai-code-audit-agent
+
+artifacts:
+  audit_report:
+    produced_at: "2026-01-23T14:30:00Z"
+    producer: clippy-analysis
+    format: sarif-2.1.0
+
+metrics:
+  total_files: 31
+  total_lines: 5494
+  servers:
+    mental-model-server: 1846
+    methodology-kb-server: 1386
+    sarif-tools-server: 1355
+    codegraph-server: 855
+
+findings_summary:
+  deprecated_api_usage: 100
+  unused_code: 12
+  simplification_opportunities: 4
+  security_issues: 0
+  critical: 0
+  high: 0
+  medium: 0
+  low: 116

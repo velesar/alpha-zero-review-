@@ -1,0 +1,87 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ai-code-audit-self-audit",
+          "version": "0.1.0",
+          "informationUri": "https://github.com/velesar/alpha-zero-review-",
+          "rules": [
+            {
+              "id": "DEPRECATED_API",
+              "name": "DeprecatedApiUsage",
+              "shortDescription": { "text": "Use of deprecated API" },
+              "defaultConfiguration": { "level": "warning" }
+            },
+            {
+              "id": "UNUSED_CODE",
+              "name": "UnusedCode",
+              "shortDescription": { "text": "Unused imports, methods, or fields" },
+              "defaultConfiguration": { "level": "note" }
+            },
+            {
+              "id": "ASYNC_SIMPLIFICATION",
+              "name": "AsyncSimplification",
+              "shortDescription": { "text": "Function can use async fn syntax" },
+              "defaultConfiguration": { "level": "note" }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "DEPRECATED_API",
+          "level": "warning",
+          "message": { "text": "Use of deprecated rmcp::Error type alias. Should use rmcp::ErrorData instead." },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "mental-model-server/src/server.rs" } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "methodology-kb-server/src/server.rs" } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "sarif-tools-server/src/server.rs" } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "codegraph-server/src/server.rs" } } }
+          ],
+          "properties": {
+            "occurrences": 100,
+            "recommendation": "Replace rmcp::Error with rmcp::ErrorData across all servers"
+          }
+        },
+        {
+          "ruleId": "UNUSED_CODE",
+          "level": "note",
+          "message": { "text": "Unused imports and dead code detected" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "codegraph-server/src/server.rs" }, "region": { "startLine": 6 } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "codegraph-server/src/graph.rs" } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "methodology-kb-server/src/acquisition.rs" } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "mental-model-server/src/server.rs" } } }
+          ],
+          "properties": {
+            "items": [
+              "Hotspot, Impact, ModuleDeps, Symbol imports unused in codegraph-server",
+              "AcquisitionStatus, MetricData imports unused",
+              "HashMap import unused in acquisition.rs",
+              "ArtifactInfo, Constraints imports unused",
+              "ListAcquirableMetricsInput struct never constructed"
+            ]
+          }
+        },
+        {
+          "ruleId": "ASYNC_SIMPLIFICATION",
+          "level": "note",
+          "message": { "text": "Functions can be simplified using async fn syntax" },
+          "locations": [
+            { "physicalLocation": { "artifactLocation": { "uri": "mental-model-server/src/server.rs" } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "methodology-kb-server/src/server.rs" } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "sarif-tools-server/src/server.rs" } } },
+            { "physicalLocation": { "artifactLocation": { "uri": "codegraph-server/src/server.rs" } } }
+          ],
+          "properties": {
+            "occurrences": 4,
+            "recommendation": "Convert impl Future return types to async fn syntax where possible"
+          }
+        }
+      ]
+    }
+  ]
+}
