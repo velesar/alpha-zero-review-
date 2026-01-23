@@ -12,8 +12,8 @@ on:
   workflow_dispatch:
     inputs:
       tools:
-        description: 'Tools to run (comma-separated: semgrep,bandit,ruff,trivy,scip)'
-        default: 'semgrep,bandit,ruff,trivy'
+        description: 'Tools to run (comma-separated: semgrep,bandit,ruff,trivy,clippy,scip)'
+        default: 'semgrep,bandit,ruff,trivy,clippy'
         required: false
       target_path:
         description: 'Path to analyze'
@@ -243,6 +243,117 @@ jobs:
           sarif_file: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/trivy.sarif
         continue-on-error: true
 
+  clippy:
+    needs: detect-language
+    runs-on: ubuntu-latest
+    if: needs.detect-language.outputs.has_rust == 'true' && contains(github.event.inputs.tools || 'clippy', 'clippy')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Create artifacts directory
+        run: mkdir -p ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}
+
+      - name: Run Clippy with JSON output
+        run: |
+          cargo clippy --all-targets --message-format=json 2>&1 \
+            | tee ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/clippy-raw.json || true
+
+      - name: Convert Clippy JSON to SARIF
+        run: |
+          # Create SARIF from clippy JSON output
+          python3 << 'PYTHON_SCRIPT'
+          import json
+          import sys
+          from pathlib import Path
+
+          artifacts_dir = "${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}"
+          input_file = Path(f"{artifacts_dir}/clippy-raw.json")
+          output_file = Path(f"{artifacts_dir}/clippy.sarif")
+
+          results = []
+          rules = {}
+
+          with open(input_file) as f:
+              for line in f:
+                  try:
+                      msg = json.loads(line)
+                      if msg.get("reason") == "compiler-message":
+                          message = msg.get("message", {})
+                          level = message.get("level", "warning")
+                          if level in ("warning", "error"):
+                              code = message.get("code", {})
+                              rule_id = code.get("code", "unknown") if code else "unknown"
+
+                              spans = message.get("spans", [])
+                              if spans:
+                                  span = spans[0]
+                                  result = {
+                                      "ruleId": rule_id,
+                                      "level": "error" if level == "error" else "warning",
+                                      "message": {"text": message.get("message", "")},
+                                      "locations": [{
+                                          "physicalLocation": {
+                                              "artifactLocation": {"uri": span.get("file_name", "")},
+                                              "region": {
+                                                  "startLine": span.get("line_start", 1),
+                                                  "startColumn": span.get("column_start", 1),
+                                                  "endLine": span.get("line_end", 1),
+                                                  "endColumn": span.get("column_end", 1)
+                                              }
+                                          }
+                                      }]
+                                  }
+                                  results.append(result)
+
+                                  if rule_id not in rules:
+                                      rules[rule_id] = {
+                                          "id": rule_id,
+                                          "shortDescription": {"text": rule_id},
+                                          "helpUri": f"https://rust-lang.github.io/rust-clippy/master/index.html#{rule_id}"
+                                      }
+                  except json.JSONDecodeError:
+                      continue
+
+          sarif = {
+              "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+              "version": "2.1.0",
+              "runs": [{
+                  "tool": {
+                      "driver": {
+                          "name": "clippy",
+                          "version": "1.0.0",
+                          "informationUri": "https://github.com/rust-lang/rust-clippy",
+                          "rules": list(rules.values())
+                      }
+                  },
+                  "results": results
+              }]
+          }
+
+          with open(output_file, "w") as f:
+              json.dump(sarif, f, indent=2)
+
+          print(f"Generated SARIF with {len(results)} findings")
+          PYTHON_SCRIPT
+
+      - name: Upload Clippy SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-sarif
+          path: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/clippy.sarif
+
+      - name: Upload to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/clippy.sarif
+        continue-on-error: true
+
   scip-index:
     needs: detect-language
     runs-on: ubuntu-latest
@@ -283,7 +394,7 @@ jobs:
           if-no-files-found: ignore
 
   combine-artifacts:
-    needs: [semgrep, bandit, ruff, trivy, scip-index]
+    needs: [semgrep, bandit, ruff, trivy, clippy, scip-index]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -358,7 +469,7 @@ jobs:
           echo "| Tool | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
 
-          for tool in semgrep bandit ruff trivy scip; do
+          for tool in semgrep bandit ruff trivy clippy scip; do
             ext="sarif"
             if [ "$tool" = "scip" ]; then ext="scip"; fi
             if [ -f "${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/$tool.$ext" ]; then
