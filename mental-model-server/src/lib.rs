@@ -6,5 +6,6 @@
 pub mod artifacts;
 pub mod error;
 pub mod model;
+pub mod ops;
 pub mod server;
 pub mod utils;
