@@ -101,12 +101,12 @@ impl CodegraphServer {
 
     /// Load a SCIP index file
     #[tool(description = "Load a SCIP index file (.scip) or JSON codegraph file for semantic analysis")]
-    async fn load_index(&self, input: Parameters<LoadIndexInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn load_index(&self, input: Parameters<LoadIndexInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let path = PathBuf::from(&input.scip_path);
 
         if !path.exists() {
-            return Err(rmcp::Error::invalid_params(
+            return Err(rmcp::ErrorData::invalid_params(
                 format!("Index file not found: {}", input.scip_path),
                 None,
             ));
@@ -116,7 +116,7 @@ impl CodegraphServer {
             Codegraph::load_from_json(&path)
         } else {
             Codegraph::load_from_scip(&path)
-        }.map_err(|e| rmcp::Error::internal_error(format!("Failed to load index: {}", e), None))?;
+        }.map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to load index: {}", e), None))?;
 
         let output = LoadIndexOutput {
             status: "loaded".to_string(),
@@ -125,49 +125,49 @@ impl CodegraphServer {
         };
 
         *self.graph.write().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })? = Some(graph);
 
         let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Get information about a symbol
     #[tool(description = "Get detailed information about a symbol by its ID")]
-    async fn get_symbol_info(&self, input: Parameters<SymbolInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_symbol_info(&self, input: Parameters<SymbolInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let graph = self.graph.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let graph = graph.as_ref().ok_or_else(|| {
-            rmcp::Error::internal_error("No index loaded. Call load_index first.".to_string(), None)
+            rmcp::ErrorData::internal_error("No index loaded. Call load_index first.".to_string(), None)
         })?;
 
         let symbol = graph.get_symbol(&input.symbol_id).ok_or_else(|| {
-            rmcp::Error::invalid_params(format!("Symbol not found: {}", input.symbol_id), None)
+            rmcp::ErrorData::invalid_params(format!("Symbol not found: {}", input.symbol_id), None)
         })?;
 
         let json = serde_json::to_string_pretty(&symbol)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Get all callers of a symbol
     #[tool(description = "Get all locations where a symbol is called/referenced")]
-    async fn get_callers(&self, input: Parameters<SymbolInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_callers(&self, input: Parameters<SymbolInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let graph = self.graph.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let graph = graph.as_ref().ok_or_else(|| {
-            rmcp::Error::internal_error("No index loaded. Call load_index first.".to_string(), None)
+            rmcp::ErrorData::internal_error("No index loaded. Call load_index first.".to_string(), None)
         })?;
 
         let callers = graph.get_callers(&input.symbol_id);
@@ -185,22 +185,22 @@ impl CodegraphServer {
         };
 
         let json = serde_json::to_string_pretty(&response)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Get callees from a symbol
     #[tool(description = "Get all symbols called/referenced from within a symbol's definition")]
-    async fn get_callees(&self, input: Parameters<SymbolInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_callees(&self, input: Parameters<SymbolInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let graph = self.graph.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let graph = graph.as_ref().ok_or_else(|| {
-            rmcp::Error::internal_error("No index loaded. Call load_index first.".to_string(), None)
+            rmcp::ErrorData::internal_error("No index loaded. Call load_index first.".to_string(), None)
         })?;
 
         let callees = graph.get_callees(&input.symbol_id);
@@ -218,70 +218,70 @@ impl CodegraphServer {
         };
 
         let json = serde_json::to_string_pretty(&response)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Get impact analysis for a symbol
     #[tool(description = "Analyze the impact of changing a symbol (how many files/references would be affected)")]
-    async fn get_impact(&self, input: Parameters<SymbolInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_impact(&self, input: Parameters<SymbolInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let graph = self.graph.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let graph = graph.as_ref().ok_or_else(|| {
-            rmcp::Error::internal_error("No index loaded. Call load_index first.".to_string(), None)
+            rmcp::ErrorData::internal_error("No index loaded. Call load_index first.".to_string(), None)
         })?;
 
         let impact = graph.get_impact(&input.symbol_id);
 
         let json = serde_json::to_string_pretty(&impact)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Get module dependencies
     #[tool(description = "Get dependencies of a module/file (what other files it depends on)")]
-    async fn get_module_deps(&self, input: Parameters<ModuleDepsInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_module_deps(&self, input: Parameters<ModuleDepsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let graph = self.graph.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let graph = graph.as_ref().ok_or_else(|| {
-            rmcp::Error::internal_error("No index loaded. Call load_index first.".to_string(), None)
+            rmcp::ErrorData::internal_error("No index loaded. Call load_index first.".to_string(), None)
         })?;
 
         let deps = graph.get_module_deps(&input.module_path);
 
         let json = serde_json::to_string_pretty(&deps)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Get all symbols in a file
     #[tool(description = "Get all symbols defined in a specific file")]
-    async fn get_file_symbols(&self, input: Parameters<FileInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_file_symbols(&self, input: Parameters<FileInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let graph = self.graph.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let graph = graph.as_ref().ok_or_else(|| {
-            rmcp::Error::internal_error("No index loaded. Call load_index first.".to_string(), None)
+            rmcp::ErrorData::internal_error("No index loaded. Call load_index first.".to_string(), None)
         })?;
 
         let symbols = graph.get_file_symbols(&input.file_path);
 
         let json = serde_json::to_string_pretty(&symbols)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Found {} symbols in {}\n\n{}",
@@ -293,21 +293,21 @@ impl CodegraphServer {
 
     /// Find symbols by pattern
     #[tool(description = "Search for symbols by name pattern (case-insensitive substring match)")]
-    async fn find_symbol(&self, input: Parameters<FindSymbolInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn find_symbol(&self, input: Parameters<FindSymbolInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let graph = self.graph.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let graph = graph.as_ref().ok_or_else(|| {
-            rmcp::Error::internal_error("No index loaded. Call load_index first.".to_string(), None)
+            rmcp::ErrorData::internal_error("No index loaded. Call load_index first.".to_string(), None)
         })?;
 
         let symbols = graph.find_symbol(&input.pattern);
 
         let json = serde_json::to_string_pretty(&symbols)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Found {} symbols matching '{}'\n\n{}",
@@ -319,21 +319,21 @@ impl CodegraphServer {
 
     /// Find hotspot symbols
     #[tool(description = "Find symbols with many callers (hotspots that may need careful attention during changes)")]
-    async fn find_hotspot_symbols(&self, input: Parameters<FindHotspotsInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn find_hotspot_symbols(&self, input: Parameters<FindHotspotsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let graph = self.graph.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let graph = graph.as_ref().ok_or_else(|| {
-            rmcp::Error::internal_error("No index loaded. Call load_index first.".to_string(), None)
+            rmcp::ErrorData::internal_error("No index loaded. Call load_index first.".to_string(), None)
         })?;
 
         let hotspots = graph.find_hotspots(input.min_callers, input.path_filter.as_deref());
 
         let json = serde_json::to_string_pretty(&hotspots)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Found {} hotspot symbols with >= {} callers\n\n{}",

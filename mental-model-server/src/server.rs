@@ -193,10 +193,10 @@ impl MentalModelServer {
 
     /// Initialize a new mental model for a project
     #[tool(description = "Initialize a new mental model for a project. Call this before starting an audit.")]
-    async fn init_model(&self, input: Parameters<InitModelInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn init_model(&self, input: Parameters<InitModelInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let mut model = self.model.write().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         *model = MentalModel::new(input.name, input.path);
@@ -205,7 +205,7 @@ impl MentalModelServer {
 
         drop(model);
         self.save_model().map_err(|e| {
-            rmcp::Error::internal_error(format!("Save error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(
@@ -215,13 +215,13 @@ impl MentalModelServer {
 
     /// Get the current mental model state
     #[tool(description = "Get the current mental model state as YAML. Returns the complete model including all viewpoint data, constraints, and findings.")]
-    async fn get_model(&self) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_model(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let model = self.model.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let yaml = serde_yaml::to_string(&*model).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(yaml)]))
@@ -229,26 +229,26 @@ impl MentalModelServer {
 
     /// Update the mental model with viewpoint results
     #[tool(description = "Update the mental model with results from a viewpoint analysis. This will also recalculate derived constraints.")]
-    async fn update_viewpoint(&self, input: Parameters<UpdateViewpointInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn update_viewpoint(&self, input: Parameters<UpdateViewpointInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let mut model = self.model.write().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         model.apply_viewpoint(&input.viewpoint, input.data).map_err(|e| {
-            rmcp::Error::internal_error(format!("Apply viewpoint error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Apply viewpoint error: {}", e), None)
         })?;
 
         // Recalculate constraints
         model.constraints = derive_constraints(&model);
 
         let constraints_json = serde_json::to_string_pretty(&model.constraints).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         drop(model);
         self.save_model().map_err(|e| {
-            rmcp::Error::internal_error(format!("Save error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
@@ -259,16 +259,16 @@ impl MentalModelServer {
 
     /// Get business context for a file path
     #[tool(description = "Get business context for a specific file path. Returns bounded context type, architecture layer, and hotspot status.")]
-    async fn get_context(&self, input: Parameters<GetContextInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_context(&self, input: Parameters<GetContextInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let model = self.model.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let context = model.get_context_for_path(&input.file_path);
 
         let json = serde_json::to_string_pretty(&context).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
@@ -276,13 +276,13 @@ impl MentalModelServer {
 
     /// Get derived analysis constraints
     #[tool(description = "Get the derived analysis constraints. These are automatically calculated paths that should receive priority attention based on the mental model.")]
-    async fn get_constraints(&self) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_constraints(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let model = self.model.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let json = serde_json::to_string_pretty(&model.constraints).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
@@ -290,10 +290,10 @@ impl MentalModelServer {
 
     /// Add a finding with automatic context enrichment
     #[tool(description = "Add a finding from quality analysis. The finding will be automatically enriched with context from the mental model and severity will be adjusted.")]
-    async fn add_finding(&self, input: Parameters<AddFindingInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn add_finding(&self, input: Parameters<AddFindingInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let mut model = self.model.write().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         // Parse base severity
@@ -327,7 +327,7 @@ impl MentalModelServer {
         };
 
         let finding_json = serde_json::to_string_pretty(&finding).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         model.findings.push(finding);
@@ -339,7 +339,7 @@ impl MentalModelServer {
 
         drop(model);
         self.save_model().map_err(|e| {
-            rmcp::Error::internal_error(format!("Save error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
@@ -350,13 +350,13 @@ impl MentalModelServer {
 
     /// Get all findings from the model
     #[tool(description = "Get all findings from quality analysis viewpoints.")]
-    async fn get_findings(&self) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_findings(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let model = self.model.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let json = serde_json::to_string_pretty(&model.findings).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
@@ -368,10 +368,10 @@ impl MentalModelServer {
 
     /// Synthesize findings into root causes
     #[tool(description = "Cluster findings into root causes. This analyzes patterns across findings to identify underlying issues.")]
-    async fn synthesize(&self, input: Parameters<SynthesizeInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn synthesize(&self, input: Parameters<SynthesizeInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let mut model = self.model.write().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let root_causes = match input.algorithm.as_str() {
@@ -384,11 +384,11 @@ impl MentalModelServer {
 
         drop(model);
         self.save_model().map_err(|e| {
-            rmcp::Error::internal_error(format!("Save error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
         })?;
 
         let json = serde_json::to_string_pretty(&root_causes).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
@@ -401,13 +401,13 @@ impl MentalModelServer {
 
     /// Get completed viewpoints
     #[tool(description = "Get list of viewpoints that have been completed.")]
-    async fn get_completed_viewpoints(&self) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_completed_viewpoints(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let model = self.model.read().map_err(|e| {
-            rmcp::Error::internal_error(format!("Lock error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
 
         let json = serde_json::to_string_pretty(&model.completed_viewpoints).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
@@ -415,14 +415,14 @@ impl MentalModelServer {
 
     /// Get available and missing artifacts for a commit
     #[tool(description = "List available and missing artifacts for a specific commit. Use 'HEAD' or 'latest' for current commit.")]
-    async fn get_commit_artifacts(&self, input: Parameters<GetCommitArtifactsInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_commit_artifacts(&self, input: Parameters<GetCommitArtifactsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let commit = self.artifact_store.resolve_commit(&input.commit)
-            .map_err(|e| rmcp::Error::internal_error(format!("Failed to resolve commit: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None))?;
 
         let (available, missing) = self.artifact_store.get_commit_artifacts(&commit)
-            .map_err(|e| rmcp::Error::internal_error(format!("Failed to get artifacts: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to get artifacts: {}", e), None))?;
 
         let output = GetCommitArtifactsOutput {
             commit,
@@ -431,18 +431,18 @@ impl MentalModelServer {
         };
 
         let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Store an artifact for a commit
     #[tool(description = "Store a tool output artifact (SARIF, SCIP, coverage) for a specific commit. Data should be JSON for SARIF or base64 for binary.")]
-    async fn store_artifact(&self, input: Parameters<StoreArtifactInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn store_artifact(&self, input: Parameters<StoreArtifactInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let commit = self.artifact_store.resolve_commit(&input.commit)
-            .map_err(|e| rmcp::Error::internal_error(format!("Failed to resolve commit: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None))?;
 
         let metadata = StoreArtifactMetadata {
             producer: input.producer,
@@ -454,7 +454,7 @@ impl MentalModelServer {
             &input.artifact_type,
             input.data.as_bytes(),
             &metadata,
-        ).map_err(|e| rmcp::Error::internal_error(format!("Failed to store artifact: {}", e), None))?;
+        ).map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to store artifact: {}", e), None))?;
 
         let output = StoreArtifactOutput {
             stored_at,
@@ -463,21 +463,21 @@ impl MentalModelServer {
         };
 
         let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Retrieve an artifact for a commit
     #[tool(description = "Retrieve a stored artifact by commit and type. Returns the artifact data along with metadata.")]
-    async fn get_artifact(&self, input: Parameters<GetArtifactInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_artifact(&self, input: Parameters<GetArtifactInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let commit = self.artifact_store.resolve_commit(&input.commit)
-            .map_err(|e| rmcp::Error::internal_error(format!("Failed to resolve commit: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None))?;
 
         let (data, info) = self.artifact_store.get_artifact(&commit, &input.artifact_type)
-            .map_err(|e| rmcp::Error::internal_error(format!("Artifact not found: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Artifact not found: {}", e), None))?;
 
         let data_str = String::from_utf8(data)
             .unwrap_or_else(|e| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, e.into_bytes()));
@@ -491,7 +491,7 @@ impl MentalModelServer {
         };
 
         let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }

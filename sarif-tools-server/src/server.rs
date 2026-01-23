@@ -119,14 +119,14 @@ impl SarifToolsServer {
 
     /// Run a code analysis tool and get SARIF output
     #[tool(description = "Run a code analysis tool (semgrep, bandit, ruff, trivy) on a path and get SARIF output")]
-    async fn run_tool(&self, input: Parameters<RunToolInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn run_tool(&self, input: Parameters<RunToolInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let runner = self.registry.get(&input.tool)
-            .ok_or_else(|| rmcp::Error::invalid_params(format!("Unknown tool: {}", input.tool), None))?;
+            .ok_or_else(|| rmcp::ErrorData::invalid_params(format!("Unknown tool: {}", input.tool), None))?;
 
         if !runner.is_available() {
-            return Err(rmcp::Error::internal_error(
+            return Err(rmcp::ErrorData::internal_error(
                 format!("Tool not installed: {}. Please install it first.", input.tool),
                 None,
             ));
@@ -134,7 +134,7 @@ impl SarifToolsServer {
 
         let path = PathBuf::from(&input.path);
         if !path.exists() {
-            return Err(rmcp::Error::invalid_params(
+            return Err(rmcp::ErrorData::invalid_params(
                 format!("Path does not exist: {}", input.path),
                 None,
             ));
@@ -143,7 +143,7 @@ impl SarifToolsServer {
         tracing::info!("Running {} on {}", input.tool, input.path);
 
         let result = runner.run(&path, input.config.as_ref())
-            .map_err(|e| rmcp::Error::internal_error(format!("Tool execution failed: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Tool execution failed: {}", e), None))?;
 
         let result_count = result.sarif.result_count();
         let output = RunToolOutput {
@@ -154,14 +154,14 @@ impl SarifToolsServer {
         };
 
         let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// List all available analysis tools
     #[tool(description = "List all available code analysis tools with their installation status")]
-    async fn list_available_tools(&self) -> Result<CallToolResult, rmcp::Error> {
+    async fn list_available_tools(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let tools = self.registry.list_available();
         let installed_count = tools.iter().filter(|t| t.installed).count();
 
@@ -171,21 +171,21 @@ impl SarifToolsServer {
         };
 
         let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Merge multiple SARIF files into one
     #[tool(description = "Merge multiple SARIF objects into a single combined SARIF object")]
-    async fn merge_sarif(&self, input: Parameters<MergeSarifInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn merge_sarif(&self, input: Parameters<MergeSarifInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let mut combined = Sarif::new();
 
         for sarif_value in input.sarif_files {
             let sarif: Sarif = serde_json::from_value(sarif_value)
-                .map_err(|e| rmcp::Error::invalid_params(format!("Invalid SARIF: {}", e), None))?;
+                .map_err(|e| rmcp::ErrorData::invalid_params(format!("Invalid SARIF: {}", e), None))?;
             combined.merge(sarif);
         }
 
@@ -199,18 +199,18 @@ impl SarifToolsServer {
         };
 
         let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Enrich SARIF with category and severity mappings
     #[tool(description = "Normalize and enrich SARIF results with categories, CWE IDs, and base severity from rule mappings")]
-    async fn normalize_sarif(&self, input: Parameters<NormalizeSarifInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn normalize_sarif(&self, input: Parameters<NormalizeSarifInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let sarif: Sarif = serde_json::from_value(input.sarif)
-            .map_err(|e| rmcp::Error::invalid_params(format!("Invalid SARIF: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::invalid_params(format!("Invalid SARIF: {}", e), None))?;
 
         // Load rule mappings
         let mappings_path = input.rule_mappings
@@ -219,7 +219,7 @@ impl SarifToolsServer {
 
         let mappings = if let Some(path) = mappings_path {
             load_rule_mappings(&path)
-                .map_err(|e| rmcp::Error::internal_error(format!("Failed to load mappings: {}", e), None))?
+                .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to load mappings: {}", e), None))?
         } else {
             HashMap::new()
         };
@@ -259,7 +259,7 @@ impl SarifToolsServer {
         }
 
         let json = serde_json::to_string_pretty(&enriched_results)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Enriched {} results\n\n{}",
@@ -270,11 +270,11 @@ impl SarifToolsServer {
 
     /// Get configuration for a specific tool
     #[tool(description = "Get configuration and status for a specific analysis tool")]
-    async fn get_tool_config(&self, input: Parameters<GetToolConfigInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_tool_config(&self, input: Parameters<GetToolConfigInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         let runner = self.registry.get(&input.tool)
-            .ok_or_else(|| rmcp::Error::invalid_params(format!("Unknown tool: {}", input.tool), None))?;
+            .ok_or_else(|| rmcp::ErrorData::invalid_params(format!("Unknown tool: {}", input.tool), None))?;
 
         let output = GetToolConfigOutput {
             name: runner.name().to_string(),
@@ -284,7 +284,7 @@ impl SarifToolsServer {
         };
 
         let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
