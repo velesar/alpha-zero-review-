@@ -6,3 +6,4 @@
 pub mod artifacts;
 pub mod model;
 pub mod server;
+pub mod utils;

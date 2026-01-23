@@ -7,3 +7,4 @@ pub mod sarif;
 pub mod runner;
 pub mod server;
 pub mod tools;
+pub mod utils;
