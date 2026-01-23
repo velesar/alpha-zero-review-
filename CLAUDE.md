@@ -6,10 +6,12 @@ and produce actionable insights instead of raw finding dumps.
 
 ## MCP Servers
 
-This project requires two MCP servers (configured in `.mcp.json`):
+This project uses four MCP servers (configured in `.mcp.json`):
 
-- **mental-model**: Manages the central mental model artifact
+- **mental-model**: Manages the central mental model artifact and commit-indexed artifact storage
 - **methodology-kb**: Knowledge base for metrics, thresholds, and standards
+- **sarif-tools**: Runs code analysis tools (semgrep, bandit, ruff, trivy, clippy) with SARIF output
+- **codegraph**: SCIP-based semantic code intelligence for symbol analysis and impact assessment
 
 ## Available Commands
 
@@ -132,6 +134,9 @@ Read skills/vp-f01-tech-stack/SKILL.md and follow its instructions
 - `get_findings()` - Get all findings
 - `synthesize(algorithm?)` - Cluster findings into root causes
 - `get_completed_viewpoints()` - List completed viewpoints
+- `get_commit_artifacts(commit?)` - List available/missing artifacts for commit (HEAD/latest supported)
+- `store_artifact(commit, type, data, producer)` - Store SARIF/SCIP artifact for commit
+- `get_artifact(commit?, type)` - Retrieve stored artifact
 
 ### methodology-kb server
 - `lookup_metric(metric, project_type?)` - Get metric definition and thresholds
@@ -142,6 +147,25 @@ Read skills/vp-f01-tech-stack/SKILL.md and follow its instructions
 - `list_metrics()` - List available metrics
 - `list_standards()` - List architecture standards
 - `get_category(category)` - Get category details
+
+### sarif-tools server
+- `run_tool(tool, path, config?)` - Run analysis tool and get SARIF output
+  - Tools: `semgrep`, `bandit`, `ruff`, `trivy`, `clippy`
+- `list_available_tools()` - List tools with installation status
+- `get_tool_config(tool)` - Get tool configuration
+- `merge_sarif(sarif_files)` - Merge multiple SARIF results
+- `normalize_sarif(sarif, rule_mappings?)` - Enrich SARIF with categories and severity
+
+### codegraph server
+- `load_index(scip_path)` - Load SCIP index or JSON codegraph
+- `find_symbol(pattern)` - Search symbols by name pattern
+- `get_symbol_info(symbol_id)` - Get detailed symbol information
+- `get_callers(symbol_id)` - Get all references to a symbol
+- `get_callees(symbol_id)` - Get symbols called from within a symbol
+- `get_impact(symbol_id)` - Analyze change impact (affected files/references)
+- `get_file_symbols(file_path)` - Get all symbols defined in a file
+- `get_module_deps(module_path)` - Get module dependencies
+- `find_hotspot_symbols(min_callers, path_filter?)` - Find heavily-referenced symbols
 
 ## Output Deliverables
 
@@ -158,3 +182,59 @@ After completing all viewpoints, generate:
 - 3-5 root causes synthesized (not 800+ findings)
 - Fowler Quadrant distribution analyzed
 - Actionable recommendations provided
+
+## Self-Audit
+
+To audit this codebase itself:
+
+### Quick Self-Audit
+```bash
+# Run Clippy for Rust analysis
+cargo clippy --all-targets --message-format=json 2>&1 | head -100
+
+# Run all tests
+cargo test --all
+```
+
+### Full Self-Audit with SARIF
+```bash
+# Using sarif-tools MCP server
+sarif-tools/run_tool clippy .
+
+# Store artifact for current commit
+mental-model/store_artifact HEAD clippy <sarif-data> "cargo-clippy"
+
+# Check available artifacts
+mental-model/get_commit_artifacts HEAD
+```
+
+### Artifacts Location
+Audit artifacts are stored in `.audit/artifacts/<commit>/`:
+- `*.sarif` - SARIF format analysis results
+- `_meta.yaml` - Artifact metadata (producer, timestamp)
+- `latest` symlink - Points to most recent commit
+
+## Development
+
+### Running Tests
+```bash
+# All tests
+cargo test --all
+
+# Specific server tests
+cargo test -p mental-model-server
+cargo test -p sarif-tools-server
+cargo test -p codegraph-server
+cargo test -p methodology-kb-server
+```
+
+### Building
+```bash
+cargo build --release
+```
+
+### Checking Code Quality
+```bash
+# No warnings should appear
+cargo clippy --all-targets
+```
