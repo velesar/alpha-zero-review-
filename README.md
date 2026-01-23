@@ -1,8 +1,8 @@
 # AI Code Audit Agent
 
-**Alpha-Zero Test Implementation - Framework v2.0**
+**Beta-Zero Test Implementation - Framework v2.0**
 
-A Mental Model-first approach to code quality audit using Cline as the execution engine and custom MCP servers built in Rust. Now with **Fowler Quadrant** technical debt classification.
+A Mental Model-first approach to code quality audit using Claude CLI as the execution engine and four custom MCP servers built in Rust. Features **Fowler Quadrant** technical debt classification and SARIF-based analysis.
 
 ## Overview
 
@@ -14,105 +14,162 @@ This system provides a unique approach to code audits that goes beyond tradition
 4. **Classifies Technical Debt**: Uses Fowler Quadrant (Prudent/Reckless × Deliberate/Inadvertent)
 5. **Synthesizes Root Causes**: Clusters findings into 3-5 actionable root causes
 
-**Documentation:**
-- [VIEWPOINTS_FRAMEWORK.md](docs/VIEWPOINTS_FRAMEWORK.md) - Complete v2.0 framework specification
-- [OPERATIONS_GUIDE.md](docs/OPERATIONS_GUIDE.md) - Installation, configuration, and usage guide
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [VIEWPOINTS_FRAMEWORK.md](docs/VIEWPOINTS_FRAMEWORK.md) | Complete v2.0 framework specification |
+| [OPERATIONS_GUIDE.md](docs/OPERATIONS_GUIDE.md) | Installation, configuration, and usage |
+| [ARCHITECTURE_OVERVIEW.md](docs/ARCHITECTURE_OVERVIEW.md) | System architecture and design |
+| [Architecture Decision Records](docs/adr/) | ADRs documenting key decisions |
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           YOUR IP LAYER                                 │
-│                                                                         │
-│  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐   │
-│  │    Viewpoints     │  │   Mental Model    │  │   Methodology     │   │
-│  │    Framework      │  │   MCP Server      │  │   KB Server       │   │
-│  │  (SKILL.md)       │  │   (Rust/rmcp)     │  │   (Rust/rmcp)     │   │
-│  └───────────────────┘  └───────────────────┘  └───────────────────┘   │
-│                                                                         │
-├─────────────────────────────────────────────────────────────────────────┤
-│                           CLINE ENGINE                                  │
-│  • Reads SKILL.md files as instructions                                 │
-│  • Executes viewpoints in sequence                                      │
-│  • Calls MCP servers for context                                        │
-│  • Generates reports                                                    │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              MCP SERVERS                                     │
+│                                                                              │
+│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐  ┌────────────┐ │
+│  │ Mental Model   │  │ Methodology KB │  │ SARIF Tools    │  │ Codegraph  │ │
+│  │ Server         │  │ Server         │  │ Server         │  │ Server     │ │
+│  │                │  │                │  │                │  │            │ │
+│  │ • Model state  │  │ • Metrics      │  │ • Tool runners │  │ • SCIP     │ │
+│  │ • Artifacts    │  │ • Thresholds   │  │ • SARIF parse  │  │ • Symbols  │ │
+│  │ • Context      │  │ • Standards    │  │ • Normalize    │  │ • Impact   │ │
+│  └────────────────┘  └────────────────┘  └────────────────┘  └────────────┘ │
+│                                                                              │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                           CLAUDE CLI ENGINE                                  │
+│  • Reads SKILL.md files as instructions                                      │
+│  • Executes viewpoints in sequence                                           │
+│  • Calls MCP servers for context                                             │
+│  • Generates reports                                                         │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Components
+## MCP Servers
 
-### MCP Servers (Rust)
+### mental-model-server
+Manages the central mental model artifact and commit-indexed artifact storage.
 
-- **mental-model-server**: Manages the central mental model artifact
-  - Tools: `init_model`, `get_model`, `update_viewpoint`, `get_context`, `get_constraints`, `add_finding`, `get_findings`, `synthesize`, `get_completed_viewpoints`
+| Tool | Description |
+|------|-------------|
+| `init_model` | Initialize new mental model for project |
+| `get_model` | Get current model state as YAML |
+| `update_viewpoint` | Update with viewpoint results |
+| `get_context` | Get business context for a file |
+| `get_constraints` | Get derived analysis constraints |
+| `add_finding` | Add finding with context enrichment |
+| `get_findings` | Get all findings |
+| `synthesize` | Cluster findings into root causes |
+| `store_artifact` | Store SARIF/SCIP artifact for commit |
+| `get_artifact` | Retrieve stored artifact |
+| `get_commit_artifacts` | List available artifacts for commit |
 
-- **methodology-kb-server**: Knowledge base for metrics, thresholds, and standards
-  - Tools: `lookup_metric`, `classify_finding`, `get_thresholds`, `check_compliance`, `get_template`, `list_metrics`, `list_standards`, `get_category`
+### methodology-kb-server
+Knowledge base for metrics, thresholds, and standards.
 
-### Viewpoints Framework (16 required + 3 optional SKILL.md files)
+| Tool | Description |
+|------|-------------|
+| `lookup_metric` | Get metric definition and thresholds |
+| `classify_finding` | Classify finding with severity adjustment |
+| `get_thresholds` | Get thresholds for project type |
+| `check_compliance` | Check architecture compliance |
+| `get_template` | Get report template |
+| `list_metrics` | List available metrics |
+| `list_standards` | List architecture standards |
+| `get_category` | Get category details |
 
-**Foundation Phase:**
-- VP-F01: Technology Stack Analysis
-- VP-F02: Project Structure Analysis
-- VP-F03: Build & Deployment Analysis
+### sarif-tools-server
+Runs code analysis tools with SARIF output.
 
-**Structure Phase:**
-- VP-S01: Module Hierarchy Analysis
-- VP-S02: Layer Architecture Analysis
-- VP-S03: Domain Model Analysis
-- VP-S04: Entity Model Analysis
-- VP-S05: Interface Surface Analysis
-- VP-S06: Dependency Graph Analysis
-- VP-S07: Architecture Decisions Analysis
+| Tool | Description |
+|------|-------------|
+| `run_tool` | Run analysis tool (semgrep, bandit, ruff, trivy, clippy) |
+| `list_available_tools` | List tools with installation status |
+| `get_tool_config` | Get tool configuration |
+| `merge_sarif` | Merge multiple SARIF results |
+| `normalize_sarif` | Enrich SARIF with categories and severity |
 
-**Optional Structure Viewpoints:**
-- VP-S08: Team Topologies Mapping *(enterprise projects)*
-- VP-S09: Building Block Compliance *(TOGAF environments)*
-- VP-S10: Standards Compliance *(compliance audits)*
+### codegraph-server
+SCIP-based semantic code intelligence.
 
-**Quality Phase:**
-- VP-Q01: Security Analysis
-- VP-Q02: Performance Analysis
-- VP-Q03: Testability Analysis
-- VP-Q04: Code Style Analysis
-- VP-Q05: Documentation Analysis
+| Tool | Description |
+|------|-------------|
+| `load_index` | Load SCIP index or JSON codegraph |
+| `find_symbol` | Search symbols by name pattern |
+| `get_symbol_info` | Get detailed symbol information |
+| `get_callers` | Get all references to a symbol |
+| `get_callees` | Get symbols called from within a symbol |
+| `get_impact` | Analyze change impact |
+| `get_file_symbols` | Get all symbols in a file |
+| `get_module_deps` | Get module dependencies |
+| `find_hotspot_symbols` | Find heavily-referenced symbols |
 
-**Synthesis Phase:**
-- VP-Q06: Technical Debt Synthesis (with Fowler Quadrant classification)
+## Viewpoints Framework
 
-### Methodology Knowledge Base
+### Foundation Phase
+- **VP-F01**: Technology Stack Analysis
+- **VP-F02**: Project Structure Analysis
+- **VP-F03**: Build & Deployment Analysis
 
-- **glossary/**: Metric definitions (cognitive_complexity, coverage, etc.)
-- **taxonomies/**: Finding categories, severity adjustments, rule mappings
-- **standards/**: Architecture standards (clean, layered, hexagonal)
-- **thresholds/**: Project-type specific thresholds
-- **templates/**: Report templates
+### Structure Phase
+- **VP-S01**: Module Hierarchy Analysis
+- **VP-S02**: Layer Architecture Analysis
+- **VP-S03**: Domain Model Analysis
+- **VP-S04**: Entity Model Analysis
+- **VP-S05**: Interface Surface Analysis
+- **VP-S06**: Dependency Graph Analysis
+- **VP-S07**: Architecture Decisions Analysis
+
+### Optional Structure Viewpoints
+- **VP-S08**: Team Topologies Mapping *(enterprise)*
+- **VP-S09**: Building Block Compliance *(TOGAF)*
+- **VP-S10**: Standards Compliance *(compliance audits)*
+
+### Quality Phase
+- **VP-Q01**: Security Analysis
+- **VP-Q02**: Performance Analysis
+- **VP-Q03**: Testability Analysis
+- **VP-Q04**: Code Style Analysis
+- **VP-Q05**: Documentation Analysis
+
+### Synthesis Phase
+- **VP-Q06**: Technical Debt Synthesis (Fowler Quadrant)
 
 ## Building
 
 ```bash
-# Build MCP servers
+# Build all MCP servers
 cargo build --release
 
-# Servers will be at:
-# ./target/release/mental-model-server
-# ./target/release/methodology-kb-server
+# Run tests
+cargo test --all
+
+# Check code quality
+cargo clippy --all-targets
 ```
 
 ## Configuration
 
-Add to your Cline MCP settings (see `mcp_settings.json`):
+Add to your MCP settings (`.mcp.json`):
 
 ```json
 {
   "mcpServers": {
     "mental-model": {
       "command": "./target/release/mental-model-server",
-      "args": ["--model-path", "./mental_model.yaml"]
+      "args": ["--model-path", "./.audit/mental_model.yaml"]
     },
     "methodology-kb": {
       "command": "./target/release/methodology-kb-server",
       "args": ["--kb-path", "./methodology_kb/"]
+    },
+    "sarif-tools": {
+      "command": "./target/release/sarif-tools-server"
+    },
+    "codegraph": {
+      "command": "./target/release/codegraph-server"
     }
   }
 }
@@ -120,19 +177,21 @@ Add to your Cline MCP settings (see `mcp_settings.json`):
 
 ## Usage
 
-1. Start an audit by asking Cline to "audit this codebase"
-2. Cline will load `.clinerules` and execute viewpoints in sequence
-3. Mental model accumulates understanding through each viewpoint
-4. Findings are enriched with context and adjusted severity
-5. Final synthesis produces 3-5 root causes and actionable recommendations
+1. Start an audit: `claude "Audit this codebase using the viewpoints framework"`
+2. Claude executes viewpoints in sequence
+3. Mental model accumulates understanding
+4. Findings are enriched with context
+5. Synthesis produces root causes and recommendations
 
 ## Audit Outputs
 
-- `executive_summary.md`: Stakeholder-friendly overview
-- `root_cause_analysis.md`: Technical root causes with Fowler Quadrant classification
-- `detailed_findings.md`: All findings with context
-- `mental_model.yaml`: Complete audit data
-- `technical_debt_inventory.yaml`: Debt items classified by quadrant
+| File | Description |
+|------|-------------|
+| `executive_summary.md` | Stakeholder-friendly overview |
+| `root_cause_analysis.md` | Technical root causes with Fowler Quadrant |
+| `detailed_findings.md` | All findings with context |
+| `mental_model.yaml` | Complete audit data |
+| `technical_debt_inventory.yaml` | Debt items by quadrant |
 
 ## Key Differentiators
 
@@ -147,8 +206,6 @@ Add to your Cline MCP settings (see `mcp_settings.json`):
 
 ## Fowler Quadrant Classification
 
-Technical debt is classified along two dimensions:
-
 ```
                 DELIBERATE              INADVERTENT
          ┌────────────────────┬────────────────────┐
@@ -162,64 +219,32 @@ RECKLESS │ "No time for       │ "What's layering?" │
          └────────────────────┴────────────────────┘
 ```
 
-## Success Criteria
-
-- Full audit execution: All 16 required viewpoints complete
-- Root cause synthesis: 3-5 causes (not 800+ findings)
-- Quadrant distribution analyzed for team health indicators
-- Total audit time: < 8 hours
-- Client satisfaction: ≥ 4/5
-
 ## Project Structure
 
 ```
 .
 ├── Cargo.toml                    # Workspace manifest
+├── CLAUDE.md                     # Claude CLI instructions
+├── .mcp.json                     # MCP server configuration
 ├── docs/
 │   ├── VIEWPOINTS_FRAMEWORK.md   # v2.0 Framework specification
-│   └── OPERATIONS_GUIDE.md       # Installation and usage guide
+│   ├── OPERATIONS_GUIDE.md       # Installation and usage guide
+│   ├── ARCHITECTURE_OVERVIEW.md  # System architecture
+│   └── adr/                      # Architecture Decision Records
 ├── mental-model-server/          # Mental Model MCP Server
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs
-│       ├── server.rs
-│       └── model.rs
 ├── methodology-kb-server/        # Methodology KB MCP Server
-│   ├── Cargo.toml
-│   ├── src/
-│   │   ├── main.rs
-│   │   ├── server.rs
-│   │   └── types.rs
-│   └── templates/
+├── sarif-tools-server/           # SARIF Tools MCP Server
+├── codegraph-server/             # Codegraph MCP Server
 ├── methodology_kb/               # Knowledge Base Content
-│   ├── glossary/
-│   ├── taxonomies/
-│   ├── standards/
-│   ├── thresholds/
-│   └── templates/
 ├── skills/                       # Viewpoints Framework (v2.0)
-│   ├── .clinerules              # Audit execution rules
-│   ├── vp-f01-tech-stack/       # Foundation Phase
-│   ├── vp-f02-structure/
-│   ├── vp-f03-build-deploy/
-│   ├── vp-s01-module-hierarchy/ # Structure Phase
-│   ├── vp-s02-layer-architecture/
-│   ├── vp-s03-domain-model/
-│   ├── vp-s04-entity-model/
-│   ├── vp-s05-interface-surface/
-│   ├── vp-s06-dependency-graph/
-│   ├── vp-s07-architecture-decisions/
-│   ├── vp-s08-team-topologies/  # Optional viewpoints
-│   ├── vp-s09-building-blocks/
-│   ├── vp-s10-standards-compliance/
-│   ├── vp-q01-security/         # Quality Phase
-│   ├── vp-q02-performance/
-│   ├── vp-q03-testability/
-│   ├── vp-q04-code-style/
-│   ├── vp-q05-documentation/
-│   └── vp-q06-synthesis/        # Synthesis Phase (Fowler Quadrant)
-└── mcp_settings.json            # MCP configuration
+├── .audit/                       # Audit artifacts storage
+└── .github/workflows/            # CI/CD workflows
 ```
+
+## CI/CD
+
+- **audit-artifacts.yml**: Generates SARIF artifacts (semgrep, bandit, ruff, trivy, clippy)
+- **coverage.yml**: Code coverage with cargo-tarpaulin and Codecov
 
 ## License
 
@@ -227,4 +252,4 @@ Proprietary - Light IT Global
 
 ---
 
-*Alpha-Zero Test - Light IT Global*
+*Beta-Zero Test Implementation - Light IT Global*
