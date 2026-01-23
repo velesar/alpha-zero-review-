@@ -3,19 +3,26 @@
 //! This module implements the MCP server that provides tools for
 //! running code analysis tools and working with SARIF output.
 
+use crate::ops;
 use crate::sarif::Sarif;
 use crate::tools::{ToolInfo, ToolRegistry};
-use anyhow::Result;
-use std::future::Future;
+use crate::utils::{format_json_response, format_prefixed_json_response};
 use rmcp::{
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo, PaginatedRequestParam, ListToolsResult, ErrorData, CallToolRequestParam},
-    schemars, tool,
-    handler::server::{tool::{ToolRouter, Parameters, ToolCallContext}, ServerHandler},
-    tool_router,
+    handler::server::{
+        tool::{Parameters, ToolCallContext, ToolRouter},
+        ServerHandler,
+    },
+    model::{
+        CallToolRequestParam, CallToolResult, ErrorData, ListToolsResult,
+        PaginatedRequestParam, ServerCapabilities, ServerInfo,
+    },
+    schemars,
     service::{RequestContext, RoleServer},
+    tool, tool_router,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::PathBuf;
 
 /// SARIF Tools MCP Server
@@ -77,34 +84,11 @@ pub struct GetToolConfigInput {
     pub tool: String,
 }
 
-/// Output for get_tool_config
-#[derive(Debug, Serialize)]
-pub struct GetToolConfigOutput {
-    pub name: String,
-    pub installed: bool,
-    pub version: Option<String>,
-    pub supported_languages: Vec<String>,
-}
-
 /// Output for list_available_tools
 #[derive(Debug, Serialize)]
 pub struct ListToolsOutput {
     pub tools: Vec<ToolInfo>,
     pub installed_count: usize,
-}
-
-/// Enriched SARIF result with category information
-#[derive(Debug, Clone, Serialize)]
-pub struct EnrichedResult {
-    pub rule_id: String,
-    pub level: Option<String>,
-    pub message: String,
-    pub file: Option<String>,
-    pub line: Option<u32>,
-    pub category: Option<String>,
-    pub subcategory: Option<String>,
-    pub cwe: Option<String>,
-    pub severity_base: Option<String>,
 }
 
 #[tool_router]
@@ -118,175 +102,100 @@ impl SarifToolsServer {
     }
 
     /// Run a code analysis tool and get SARIF output
-    #[tool(description = "Run a code analysis tool (semgrep, bandit, ruff, trivy) on a path and get SARIF output")]
-    async fn run_tool(&self, input: Parameters<RunToolInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Run a code analysis tool (semgrep, bandit, ruff, trivy) on a path and get SARIF output"
+    )]
+    async fn run_tool(
+        &self,
+        input: Parameters<RunToolInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-
-        let runner = self.registry.get(&input.tool)
-            .ok_or_else(|| rmcp::ErrorData::invalid_params(format!("Unknown tool: {}", input.tool), None))?;
-
-        if !runner.is_available() {
-            return Err(rmcp::ErrorData::internal_error(
-                format!("Tool not installed: {}. Please install it first.", input.tool),
-                None,
-            ));
-        }
-
         let path = PathBuf::from(&input.path);
-        if !path.exists() {
-            return Err(rmcp::ErrorData::invalid_params(
-                format!("Path does not exist: {}", input.path),
-                None,
-            ));
-        }
 
         tracing::info!("Running {} on {}", input.tool, input.path);
 
-        let result = runner.run(&path, input.config.as_ref())
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Tool execution failed: {}", e), None))?;
+        let result = ops::execute_tool(&self.registry, &input.tool, &path, input.config.as_ref())?;
 
-        let result_count = result.sarif.result_count();
         let output = RunToolOutput {
             sarif: result.sarif,
             exit_code: result.exit_code,
             stderr: result.stderr,
-            result_count,
+            result_count: result.result_count,
         };
 
-        let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
-
-        Ok(CallToolResult::success(vec![Content::text(json)]))
+        format_json_response(&output)
     }
 
     /// List all available analysis tools
     #[tool(description = "List all available code analysis tools with their installation status")]
     async fn list_available_tools(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        let tools = self.registry.list_available();
-        let installed_count = tools.iter().filter(|t| t.installed).count();
+        let (tools, installed_count) = ops::list_available_tools(&self.registry);
 
         let output = ListToolsOutput {
             tools,
             installed_count,
         };
 
-        let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
-
-        Ok(CallToolResult::success(vec![Content::text(json)]))
+        format_json_response(&output)
     }
 
     /// Merge multiple SARIF files into one
     #[tool(description = "Merge multiple SARIF objects into a single combined SARIF object")]
-    async fn merge_sarif(&self, input: Parameters<MergeSarifInput>) -> Result<CallToolResult, rmcp::ErrorData> {
-        let input = input.0;
-
-        let mut combined = Sarif::new();
-
-        for sarif_value in input.sarif_files {
-            let sarif: Sarif = serde_json::from_value(sarif_value)
-                .map_err(|e| rmcp::ErrorData::invalid_params(format!("Invalid SARIF: {}", e), None))?;
-            combined.merge(sarif);
-        }
-
-        let total_results = combined.result_count();
-        let runs_count = combined.runs.len();
+    async fn merge_sarif(
+        &self,
+        input: Parameters<MergeSarifInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let result = ops::merge_sarif_files(input.0.sarif_files)?;
 
         let output = MergeSarifOutput {
-            combined,
-            total_results,
-            runs_count,
+            combined: result.combined,
+            total_results: result.total_results,
+            runs_count: result.runs_count,
         };
 
-        let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
-
-        Ok(CallToolResult::success(vec![Content::text(json)]))
+        format_json_response(&output)
     }
 
     /// Enrich SARIF with category and severity mappings
-    #[tool(description = "Normalize and enrich SARIF results with categories, CWE IDs, and base severity from rule mappings")]
-    async fn normalize_sarif(&self, input: Parameters<NormalizeSarifInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Normalize and enrich SARIF results with categories, CWE IDs, and base severity from rule mappings"
+    )]
+    async fn normalize_sarif(
+        &self,
+        input: Parameters<NormalizeSarifInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
-        let sarif: Sarif = serde_json::from_value(input.sarif)
-            .map_err(|e| rmcp::ErrorData::invalid_params(format!("Invalid SARIF: {}", e), None))?;
+        let sarif = ops::parse_sarif(input.sarif)?;
 
         // Load rule mappings
-        let mappings_path = input.rule_mappings
+        let mappings_path = input
+            .rule_mappings
             .map(PathBuf::from)
             .or_else(|| self.mappings_path.clone());
 
         let mappings = if let Some(path) = mappings_path {
-            load_rule_mappings(&path)
-                .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to load mappings: {}", e), None))?
+            ops::load_rule_mappings(&path)?
         } else {
             HashMap::new()
         };
 
-        // Enrich results
-        let mut enriched_results = Vec::new();
+        let result = ops::normalize_sarif(sarif, &mappings);
 
-        for run in &sarif.runs {
-            let tool_name = &run.tool.driver.name;
-
-            for result in &run.results {
-                let mapping_key = format!("{}:{}", tool_name.to_lowercase(), result.rule_id);
-                let fallback_key = result.rule_id.clone();
-
-                let mapping = mappings.get(&mapping_key)
-                    .or_else(|| mappings.get(&fallback_key));
-
-                let file = result.locations.first()
-                    .map(|l| l.physical_location.artifact_location.uri.clone());
-
-                let line = result.locations.first()
-                    .and_then(|l| l.physical_location.region.as_ref())
-                    .and_then(|r| r.start_line);
-
-                enriched_results.push(EnrichedResult {
-                    rule_id: result.rule_id.clone(),
-                    level: result.level.clone(),
-                    message: result.message.text.clone(),
-                    file,
-                    line,
-                    category: mapping.and_then(|m| m.get("category").and_then(|v| v.as_str())).map(String::from),
-                    subcategory: mapping.and_then(|m| m.get("subcategory").and_then(|v| v.as_str())).map(String::from),
-                    cwe: mapping.and_then(|m| m.get("cwe").and_then(|v| v.as_str())).map(String::from),
-                    severity_base: mapping.and_then(|m| m.get("base_severity").and_then(|v| v.as_str())).map(String::from),
-                });
-            }
-        }
-
-        let json = serde_json::to_string_pretty(&enriched_results)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
-
-        Ok(CallToolResult::success(vec![Content::text(format!(
-            "Enriched {} results\n\n{}",
-            enriched_results.len(),
-            json
-        ))]))
+        format_prefixed_json_response(
+            &format!("Enriched {} results", result.count),
+            &result.enriched_results,
+        )
     }
 
     /// Get configuration for a specific tool
     #[tool(description = "Get configuration and status for a specific analysis tool")]
-    async fn get_tool_config(&self, input: Parameters<GetToolConfigInput>) -> Result<CallToolResult, rmcp::ErrorData> {
-        let input = input.0;
-
-        let runner = self.registry.get(&input.tool)
-            .ok_or_else(|| rmcp::ErrorData::invalid_params(format!("Unknown tool: {}", input.tool), None))?;
-
-        let output = GetToolConfigOutput {
-            name: runner.name().to_string(),
-            installed: runner.is_available(),
-            version: runner.version(),
-            supported_languages: runner.supported_languages(),
-        };
-
-        let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
-
-        Ok(CallToolResult::success(vec![Content::text(json)]))
+    async fn get_tool_config(
+        &self,
+        input: Parameters<GetToolConfigInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let config = ops::get_tool_config(&self.registry, &input.0.tool)?;
+        format_json_response(&config)
     }
 }
 
@@ -297,10 +206,10 @@ impl ServerHandler for SarifToolsServer {
                 name: "sarif-tools".into(),
                 version: "0.1.0".into(),
             },
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
-            instructions: Some("SARIF Tools MCP Server for AI Code Audit. Use this server to run code analysis tools (semgrep, bandit, ruff, trivy) and work with SARIF output format.".into()),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            instructions: Some(
+                "SARIF Tools MCP Server for AI Code Audit. Use this server to run code analysis tools (semgrep, bandit, ruff, trivy) and work with SARIF output format.".into(),
+            ),
             ..Default::default()
         }
     }
@@ -326,33 +235,6 @@ impl ServerHandler for SarifToolsServer {
         let tool_context = ToolCallContext::new(self, request, context);
         self.tool_router.call(tool_context)
     }
-}
-
-/// Load rule mappings from YAML file
-fn load_rule_mappings(path: &PathBuf) -> Result<HashMap<String, serde_json::Value>> {
-    let content = std::fs::read_to_string(path)?;
-
-    // Parse as YAML array of mappings
-    let yaml_value: serde_yaml::Value = serde_yaml::from_str(&content)?;
-
-    let mut mappings = HashMap::new();
-
-    if let Some(items) = yaml_value.as_sequence() {
-        for item in items {
-            if let (Some(tool), Some(rule_id)) = (
-                item.get("tool").and_then(|v| v.as_str()),
-                item.get("rule_id").and_then(|v| v.as_str()),
-            ) {
-                let key = format!("{}:{}", tool.to_lowercase(), rule_id);
-                let json_value = serde_json::to_value(item)?;
-                mappings.insert(key, json_value.clone());
-                // Also insert with just rule_id for fallback
-                mappings.insert(rule_id.to_string(), json_value);
-            }
-        }
-    }
-
-    Ok(mappings)
 }
 
 #[cfg(test)]
