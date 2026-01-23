@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 /// SARIF 2.1.0 root object
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sarif {
     #[serde(rename = "$schema", default = "default_schema")]
     pub schema: String,
@@ -22,6 +22,16 @@ fn default_schema() -> String {
 
 fn default_version() -> String {
     "2.1.0".to_string()
+}
+
+impl Default for Sarif {
+    fn default() -> Self {
+        Self {
+            schema: default_schema(),
+            version: default_version(),
+            runs: Vec::new(),
+        }
+    }
 }
 
 /// A single run of an analysis tool
@@ -210,6 +220,14 @@ mod tests {
         let sarif = Sarif::new();
         assert_eq!(sarif.version, "2.1.0");
         assert!(sarif.runs.is_empty());
+        assert!(sarif.schema.contains("sarif-schema-2.1.0.json"));
+    }
+
+    #[test]
+    fn test_sarif_default() {
+        let sarif = Sarif::default();
+        assert_eq!(sarif.version, "2.1.0");
+        assert!(sarif.runs.is_empty());
     }
 
     #[test]
@@ -222,6 +240,169 @@ mod tests {
 
         sarif1.merge(sarif2);
         assert_eq!(sarif1.runs.len(), 2);
+    }
+
+    #[test]
+    fn test_sarif_result_count_empty() {
+        let sarif = Sarif::new();
+        assert_eq!(sarif.result_count(), 0);
+    }
+
+    #[test]
+    fn test_sarif_result_count_with_results() {
+        let mut sarif = Sarif::new();
+        let mut run = Run::default();
+        run.results.push(Result {
+            rule_id: "rule1".to_string(),
+            level: Some("warning".to_string()),
+            message: Message { text: "test".to_string(), markdown: None },
+            locations: vec![],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        run.results.push(Result {
+            rule_id: "rule2".to_string(),
+            level: Some("error".to_string()),
+            message: Message { text: "test2".to_string(), markdown: None },
+            locations: vec![],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        sarif.runs.push(run);
+        assert_eq!(sarif.result_count(), 2);
+    }
+
+    #[test]
+    fn test_sarif_result_count_multiple_runs() {
+        let mut sarif = Sarif::new();
+
+        let mut run1 = Run::default();
+        run1.results.push(Result {
+            rule_id: "rule1".to_string(),
+            level: None,
+            message: Message::default(),
+            locations: vec![],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        sarif.runs.push(run1);
+
+        let mut run2 = Run::default();
+        run2.results.push(Result {
+            rule_id: "rule2".to_string(),
+            level: None,
+            message: Message::default(),
+            locations: vec![],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        run2.results.push(Result {
+            rule_id: "rule3".to_string(),
+            level: None,
+            message: Message::default(),
+            locations: vec![],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        sarif.runs.push(run2);
+
+        assert_eq!(sarif.result_count(), 3);
+    }
+
+    #[test]
+    fn test_sarif_results_by_rule() {
+        let mut sarif = Sarif::new();
+        let mut run = Run::default();
+        run.results.push(Result {
+            rule_id: "rule1".to_string(),
+            level: None,
+            message: Message::default(),
+            locations: vec![],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        run.results.push(Result {
+            rule_id: "rule1".to_string(),
+            level: None,
+            message: Message::default(),
+            locations: vec![],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        run.results.push(Result {
+            rule_id: "rule2".to_string(),
+            level: None,
+            message: Message::default(),
+            locations: vec![],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        sarif.runs.push(run);
+
+        let by_rule = sarif.results_by_rule();
+        assert_eq!(by_rule.len(), 2);
+        assert_eq!(by_rule.get("rule1").unwrap().len(), 2);
+        assert_eq!(by_rule.get("rule2").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_sarif_affected_files() {
+        let mut sarif = Sarif::new();
+        let mut run = Run::default();
+        run.results.push(Result {
+            rule_id: "rule1".to_string(),
+            level: None,
+            message: Message::default(),
+            locations: vec![Location {
+                physical_location: PhysicalLocation {
+                    artifact_location: ArtifactLocation {
+                        uri: "src/main.rs".to_string(),
+                        uri_base_id: None,
+                    },
+                    region: None,
+                },
+            }],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        run.results.push(Result {
+            rule_id: "rule2".to_string(),
+            level: None,
+            message: Message::default(),
+            locations: vec![Location {
+                physical_location: PhysicalLocation {
+                    artifact_location: ArtifactLocation {
+                        uri: "src/lib.rs".to_string(),
+                        uri_base_id: None,
+                    },
+                    region: None,
+                },
+            }],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        run.results.push(Result {
+            rule_id: "rule3".to_string(),
+            level: None,
+            message: Message::default(),
+            locations: vec![Location {
+                physical_location: PhysicalLocation {
+                    artifact_location: ArtifactLocation {
+                        uri: "src/main.rs".to_string(), // duplicate
+                        uri_base_id: None,
+                    },
+                    region: None,
+                },
+            }],
+            fingerprints: None,
+            properties: serde_json::Value::Null,
+        });
+        sarif.runs.push(run);
+
+        let files = sarif.affected_files();
+        assert_eq!(files.len(), 2);
+        assert!(files.contains("src/main.rs"));
+        assert!(files.contains("src/lib.rs"));
     }
 
     #[test]
@@ -244,5 +425,154 @@ mod tests {
         let sarif: Sarif = serde_json::from_str(json).unwrap();
         assert_eq!(sarif.runs.len(), 1);
         assert_eq!(sarif.runs[0].tool.driver.name, "TestTool");
+    }
+
+    #[test]
+    fn test_parse_sarif_with_results() {
+        let json = r#"{
+            "version": "2.1.0",
+            "runs": [{
+                "tool": {
+                    "driver": {
+                        "name": "TestTool",
+                        "version": "1.0.0",
+                        "rules": [{
+                            "id": "test-rule",
+                            "shortDescription": {"text": "Test rule description"}
+                        }]
+                    }
+                },
+                "results": [{
+                    "ruleId": "test-rule",
+                    "level": "warning",
+                    "message": {"text": "Found an issue"},
+                    "locations": [{
+                        "physicalLocation": {
+                            "artifactLocation": {"uri": "src/test.rs"},
+                            "region": {
+                                "startLine": 10,
+                                "startColumn": 5,
+                                "endLine": 10,
+                                "endColumn": 20
+                            }
+                        }
+                    }]
+                }]
+            }]
+        }"#;
+
+        let sarif: Sarif = serde_json::from_str(json).unwrap();
+        assert_eq!(sarif.result_count(), 1);
+        let result = &sarif.runs[0].results[0];
+        assert_eq!(result.rule_id, "test-rule");
+        assert_eq!(result.level, Some("warning".to_string()));
+        assert_eq!(result.message.text, "Found an issue");
+
+        let location = &result.locations[0];
+        assert_eq!(location.physical_location.artifact_location.uri, "src/test.rs");
+        let region = location.physical_location.region.as_ref().unwrap();
+        assert_eq!(region.start_line, Some(10));
+        assert_eq!(region.start_column, Some(5));
+    }
+
+    #[test]
+    fn test_sarif_serialization_roundtrip() {
+        let mut sarif = Sarif::new();
+        let run = Run {
+            tool: Tool {
+                driver: ToolDriver {
+                    name: "test-tool".to_string(),
+                    version: Some("1.0.0".to_string()),
+                    information_uri: Some("https://example.com".to_string()),
+                    rules: vec![Rule {
+                        id: "rule1".to_string(),
+                        name: Some("Test Rule".to_string()),
+                        short_description: Some(Message { text: "Short".to_string(), markdown: None }),
+                        full_description: Some(Message { text: "Full description".to_string(), markdown: None }),
+                        help_uri: Some("https://example.com/rule1".to_string()),
+                        default_configuration: Some(RuleConfiguration { level: Some("warning".to_string()) }),
+                        properties: serde_json::json!({"category": "security"}),
+                    }],
+                },
+            },
+            results: vec![Result {
+                rule_id: "rule1".to_string(),
+                level: Some("warning".to_string()),
+                message: Message { text: "Test message".to_string(), markdown: Some("**Test**".to_string()) },
+                locations: vec![Location {
+                    physical_location: PhysicalLocation {
+                        artifact_location: ArtifactLocation {
+                            uri: "src/main.rs".to_string(),
+                            uri_base_id: Some("%SRCROOT%".to_string()),
+                        },
+                        region: Some(Region {
+                            start_line: Some(10),
+                            start_column: Some(5),
+                            end_line: Some(10),
+                            end_column: Some(20),
+                        }),
+                    },
+                }],
+                fingerprints: Some(serde_json::json!({"v1": "abc123"})),
+                properties: serde_json::json!({"tags": ["security"]}),
+            }],
+            invocations: vec![Invocation {
+                execution_successful: true,
+                exit_code: Some(0),
+                command_line: Some("test-tool scan".to_string()),
+                working_directory: Some(ArtifactLocation {
+                    uri: "/home/user/project".to_string(),
+                    uri_base_id: None,
+                }),
+            }],
+        };
+        sarif.runs.push(run);
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&sarif).unwrap();
+
+        // Deserialize back
+        let parsed: Sarif = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed.version, "2.1.0");
+        assert_eq!(parsed.runs.len(), 1);
+        assert_eq!(parsed.runs[0].tool.driver.name, "test-tool");
+        assert_eq!(parsed.runs[0].results.len(), 1);
+        assert_eq!(parsed.runs[0].invocations.len(), 1);
+        assert!(parsed.runs[0].invocations[0].execution_successful);
+    }
+
+    #[test]
+    fn test_rule_configuration() {
+        let config = RuleConfiguration { level: Some("error".to_string()) };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("error"));
+
+        let parsed: RuleConfiguration = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.level, Some("error".to_string()));
+    }
+
+    #[test]
+    fn test_invocation_default() {
+        let inv = Invocation::default();
+        assert!(!inv.execution_successful);
+        assert!(inv.exit_code.is_none());
+        assert!(inv.command_line.is_none());
+    }
+
+    #[test]
+    fn test_region_default() {
+        let region = Region::default();
+        assert!(region.start_line.is_none());
+        assert!(region.start_column.is_none());
+        assert!(region.end_line.is_none());
+        assert!(region.end_column.is_none());
+    }
+
+    #[test]
+    fn test_message_default() {
+        let msg = Message::default();
+        assert_eq!(msg.text, "");
+        assert!(msg.markdown.is_none());
     }
 }

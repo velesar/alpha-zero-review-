@@ -246,3 +246,26 @@ fn test_yaml_serialization() {
     let deserialized: CategoryDefinition = serde_yaml::from_str(&yaml).unwrap();
     assert_eq!(deserialized.id, category.id);
 }
+
+// ============================================================================
+// Server Handler Tests
+// ============================================================================
+
+use methodology_kb_server::server::MethodologyKBServer;
+use rmcp::handler::server::ServerHandler;
+use tempfile::TempDir;
+
+#[test]
+fn test_server_creation_and_info() {
+    let temp_dir = TempDir::new().unwrap();
+    let kb_path = temp_dir.path().join("kb");
+    std::fs::create_dir_all(&kb_path).unwrap();
+
+    let server = MethodologyKBServer::new(kb_path);
+    let info = server.get_info();
+
+    assert_eq!(info.server_info.name, "methodology-kb");
+    assert_eq!(info.server_info.version, "0.1.0");
+    assert!(info.instructions.is_some());
+    assert!(info.instructions.unwrap().contains("Methodology"));
+}

@@ -380,3 +380,21 @@ fn test_reference_role_variants() {
         ReferenceRole::TypeReference,
     ];
 }
+
+// ============================================================================
+// Server Handler Tests
+// ============================================================================
+
+use codegraph_server::server::CodegraphServer;
+use rmcp::handler::server::ServerHandler;
+
+#[test]
+fn test_server_creation_and_info() {
+    let server = CodegraphServer::new();
+    let info = server.get_info();
+
+    assert_eq!(info.server_info.name, "codegraph");
+    assert_eq!(info.server_info.version, "0.1.0");
+    assert!(info.instructions.is_some());
+    assert!(info.instructions.unwrap().contains("Codegraph"));
+}

@@ -253,3 +253,24 @@ fn test_multiple_viewpoint_updates() {
     assert!(model.completed_viewpoints.contains(&"VP-F02".to_string()));
     assert!(model.completed_viewpoints.contains(&"VP-F03".to_string()));
 }
+
+// ============================================================================
+// Server Handler Tests
+// ============================================================================
+
+use mental_model_server::server::MentalModelServer;
+use rmcp::handler::server::ServerHandler;
+
+#[test]
+fn test_server_creation_and_info() {
+    let temp_dir = TempDir::new().unwrap();
+    let model_path = temp_dir.path().join("model.yaml");
+
+    let server = MentalModelServer::new(model_path);
+    let info = server.get_info();
+
+    assert_eq!(info.server_info.name, "mental-model");
+    assert_eq!(info.server_info.version, "0.1.0");
+    assert!(info.instructions.is_some());
+    assert!(info.instructions.unwrap().contains("Mental Model"));
+}

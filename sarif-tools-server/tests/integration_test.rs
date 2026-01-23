@@ -211,3 +211,21 @@ fn test_sarif_with_locations() {
         "src/main.rs"
     );
 }
+
+// ============================================================================
+// Server Handler Tests
+// ============================================================================
+
+use sarif_tools_server::server::SarifToolsServer;
+use rmcp::handler::server::ServerHandler;
+
+#[test]
+fn test_server_creation_and_info() {
+    let server = SarifToolsServer::new(None);
+    let info = server.get_info();
+
+    assert_eq!(info.server_info.name, "sarif-tools");
+    assert_eq!(info.server_info.version, "0.1.0");
+    assert!(info.instructions.is_some());
+    assert!(info.instructions.unwrap().contains("SARIF"));
+}
