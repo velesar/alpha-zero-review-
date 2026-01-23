@@ -3,8 +3,7 @@
 //! This is the main entry point for the Codegraph MCP server,
 //! which provides SCIP-based semantic code intelligence.
 
-mod graph;
-mod server;
+use codegraph_server::server;
 
 use anyhow::Result;
 use clap::Parser;

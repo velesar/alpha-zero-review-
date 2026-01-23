@@ -21,3 +21,6 @@ uuid = { workspace = true }
 glob = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 base64 = "0.22"
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -4,10 +4,7 @@
 //! which provides tools for running code analysis tools and working
 //! with SARIF output format.
 
-mod sarif;
-mod runner;
-mod server;
-mod tools;
+use sarif_tools_server::server;
 
 use anyhow::Result;
 use clap::Parser;

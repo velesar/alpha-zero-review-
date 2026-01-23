@@ -6,11 +6,13 @@ mod semgrep;
 mod bandit;
 mod ruff;
 mod trivy;
+mod clippy;
 
 pub use semgrep::SemgrepRunner;
 pub use bandit::BanditRunner;
 pub use ruff::RuffRunner;
 pub use trivy::TrivyRunner;
+pub use clippy::ClippyRunner;
 
 use crate::runner::ToolRunner;
 use serde::Serialize;
@@ -32,6 +34,7 @@ impl ToolRegistry {
         tools.insert("bandit".to_string(), Arc::new(BanditRunner));
         tools.insert("ruff".to_string(), Arc::new(RuffRunner));
         tools.insert("trivy".to_string(), Arc::new(TrivyRunner));
+        tools.insert("clippy".to_string(), Arc::new(ClippyRunner));
 
         Self { tools }
     }
@@ -87,6 +90,7 @@ mod tests {
         assert!(registry.get("bandit").is_some());
         assert!(registry.get("ruff").is_some());
         assert!(registry.get("trivy").is_some());
+        assert!(registry.get("clippy").is_some());
         assert!(registry.get("unknown").is_none());
     }
 
@@ -94,6 +98,6 @@ mod tests {
     fn test_list_tools() {
         let registry = ToolRegistry::new();
         let tools = registry.list_available();
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 5);
     }
 }

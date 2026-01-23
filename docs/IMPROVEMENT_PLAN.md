@@ -236,16 +236,23 @@ Update `.github/workflows/audit-artifacts.yml` to include:
 - [x] Phase 2: API Updates (2026-01-23)
   - Migrated ~100 `rmcp::Error` → `rmcp::ErrorData` usages
   - Zero deprecation warnings remaining
-
-### In Progress
-- [ ] Phase 3: Architecture Improvements
+- [x] Phase 3: Architecture Improvements (2026-01-23)
+  - Added Clippy SARIF runner (`sarif-tools-server/src/tools/clippy.rs`)
+  - Created lib.rs for all 4 MCP servers to enable integration testing
+  - Added 63 integration tests across all servers:
+    - mental-model-server: 18 tests (model, artifacts, context lookup)
+    - sarif-tools-server: 24 tests (SARIF parsing, tool registry, Clippy)
+    - codegraph-server: 15 tests (symbols, references, impact analysis)
+    - methodology-kb-server: 12 tests (types, serialization)
+  - Skipped error helper module (lower priority)
 
 ### Pending
 - [ ] Phase 4: Documentation & CI
 
 ### Warning Summary
-| Category | Before | After |
-|----------|--------|-------|
-| Deprecation warnings | ~100 | 0 |
-| Unused code warnings | 12 | 0 |
-| Style suggestions | 8 | 8 |
+| Category | Before | After Phase 1-2 | After Phase 3 |
+|----------|--------|-----------------|---------------|
+| Deprecation warnings | ~100 | 0 | 0 |
+| Unused code warnings | 12 | 0 | 0 |
+| Style suggestions | 8 | 8 | 8 |
+| Integration tests | 0 | 0 | 63 |

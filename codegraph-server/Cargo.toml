@@ -19,5 +19,8 @@ tracing-subscriber = { workspace = true }
 prost = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [build-dependencies]
 prost-build = { workspace = true }
