@@ -224,3 +224,279 @@
       healthy: 200
       warning: 350
       critical: 600
+
+# ============================================
+# Beta-Zero: Domain-specific profiles
+# ============================================
+
+# Python Backend Services (Django, FastAPI, Flask)
+- project_type: python_backend
+  language: python
+  description: Thresholds for Python backend services
+  metrics:
+    cognitive_complexity:
+      healthy: 12
+      warning: 18
+      critical: 30
+    cyclomatic_complexity:
+      healthy: 10
+      warning: 20
+      critical: 35
+    test_coverage:
+      healthy: 85
+      warning: 70
+      critical: 50
+    branch_coverage:
+      healthy: 75
+      warning: 55
+      critical: 35
+    code_duplication:
+      healthy: 3
+      warning: 5
+      critical: 8
+    lines_of_code:
+      healthy: 300
+      warning: 500
+      critical: 800
+    maintainability_index:
+      healthy: 60
+      warning: 40
+      critical: 25
+    technical_debt_ratio:
+      healthy: 5
+      warning: 10
+      critical: 20
+    vulnerability_count:
+      healthy: 0
+      warning: 0
+      critical: 1
+  api_specific:
+    undocumented_endpoints:
+      healthy: 0
+      warning: 5
+      critical: 15
+    missing_validation:
+      healthy: 0
+      warning: 3
+      critical: 10
+
+# TypeScript Frontend (React, Vue, Angular)
+- project_type: typescript_frontend
+  language: typescript
+  description: Thresholds for TypeScript frontend applications
+  metrics:
+    cognitive_complexity:
+      healthy: 10
+      warning: 15
+      critical: 25
+    cyclomatic_complexity:
+      healthy: 10
+      warning: 15
+      critical: 25
+    test_coverage:
+      healthy: 75
+      warning: 60
+      critical: 40
+    branch_coverage:
+      healthy: 65
+      warning: 50
+      critical: 30
+    code_duplication:
+      healthy: 4
+      warning: 7
+      critical: 12
+    lines_of_code:
+      healthy: 250
+      warning: 400
+      critical: 700
+    maintainability_index:
+      healthy: 55
+      warning: 40
+      critical: 25
+    technical_debt_ratio:
+      healthy: 6
+      warning: 12
+      critical: 25
+  component_specific:
+    max_props:
+      healthy: 5
+      warning: 8
+      critical: 15
+    max_component_depth:
+      healthy: 3
+      warning: 5
+      critical: 8
+  bundle:
+    main_chunk_kb:
+      healthy: 200
+      warning: 350
+      critical: 600
+    total_size_kb:
+      healthy: 800
+      warning: 1500
+      critical: 3000
+
+# Python Library/Package
+- project_type: python_library
+  language: python
+  description: Stricter thresholds for reusable Python libraries
+  metrics:
+    cognitive_complexity:
+      healthy: 8
+      warning: 12
+      critical: 20
+    cyclomatic_complexity:
+      healthy: 8
+      warning: 15
+      critical: 25
+    test_coverage:
+      healthy: 90
+      warning: 80
+      critical: 60
+    branch_coverage:
+      healthy: 85
+      warning: 70
+      critical: 50
+    code_duplication:
+      healthy: 2
+      warning: 4
+      critical: 7
+    lines_of_code:
+      healthy: 200
+      warning: 350
+      critical: 600
+    maintainability_index:
+      healthy: 70
+      warning: 50
+      critical: 35
+    technical_debt_ratio:
+      healthy: 3
+      warning: 6
+      critical: 12
+  documentation:
+    docstring_coverage:
+      healthy: 90
+      warning: 70
+      critical: 50
+    public_api_documented:
+      healthy: 100
+      warning: 90
+      critical: 70
+
+# Node.js Backend (Express, NestJS)
+- project_type: nodejs_backend
+  language: typescript
+  description: Thresholds for Node.js backend services
+  metrics:
+    cognitive_complexity:
+      healthy: 10
+      warning: 15
+      critical: 25
+    cyclomatic_complexity:
+      healthy: 10
+      warning: 18
+      critical: 30
+    test_coverage:
+      healthy: 80
+      warning: 65
+      critical: 45
+    branch_coverage:
+      healthy: 70
+      warning: 55
+      critical: 35
+    code_duplication:
+      healthy: 3
+      warning: 6
+      critical: 10
+    lines_of_code:
+      healthy: 250
+      warning: 400
+      critical: 700
+    maintainability_index:
+      healthy: 60
+      warning: 42
+      critical: 28
+    technical_debt_ratio:
+      healthy: 5
+      warning: 10
+      critical: 18
+
+# Data Pipeline (ETL, Airflow, etc.)
+- project_type: data_pipeline
+  language: python
+  description: Thresholds for data processing pipelines
+  metrics:
+    cognitive_complexity:
+      healthy: 15
+      warning: 25
+      critical: 40
+    cyclomatic_complexity:
+      healthy: 12
+      warning: 22
+      critical: 40
+    test_coverage:
+      healthy: 70
+      warning: 55
+      critical: 35
+    code_duplication:
+      healthy: 5
+      warning: 10
+      critical: 18
+    lines_of_code:
+      healthy: 400
+      warning: 600
+      critical: 1000
+    maintainability_index:
+      healthy: 50
+      warning: 35
+      critical: 20
+
+# Infrastructure as Code (Terraform, Pulumi)
+- project_type: infrastructure
+  language: null
+  description: Thresholds for IaC projects
+  metrics:
+    code_duplication:
+      healthy: 8
+      warning: 15
+      critical: 25
+    lines_of_code:
+      healthy: 200
+      warning: 400
+      critical: 800
+  security:
+    misconfigurations:
+      healthy: 0
+      warning: 3
+      critical: 10
+    secrets_detected:
+      healthy: 0
+      warning: 0
+      critical: 1
+
+# Critical Path Thresholds (applied to specific paths)
+- project_type: critical_path
+  language: null
+  description: Stricter thresholds for business-critical code paths
+  applies_to_paths:
+    - "*/payment/*"
+    - "*/billing/*"
+    - "*/auth/*"
+    - "*/security/*"
+  metrics:
+    test_coverage:
+      healthy: 95
+      warning: 85
+      critical: 70
+    branch_coverage:
+      healthy: 90
+      warning: 80
+      critical: 65
+    vulnerability_count:
+      healthy: 0
+      warning: 0
+      critical: 0
+    cognitive_complexity:
+      healthy: 8
+      warning: 12
+      critical: 18

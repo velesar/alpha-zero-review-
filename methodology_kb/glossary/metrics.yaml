@@ -1,12 +1,14 @@
 # Metrics Glossary
 # Defines all metrics used in code quality analysis
+# Version: 2.0 (Beta-Zero enhanced)
 
 cognitive_complexity:
   name: Cognitive Complexity
   description: >
     Measures how difficult code is to understand. Unlike cyclomatic complexity,
     it accounts for nested structures and break in linear flow that affect
-    human comprehension.
+    human comprehension. Increments for: if/else, loops, catch blocks, goto,
+    sequences of binary logical operators, recursion, and nesting depth.
   category: maintainability
   unit: score
   direction: lower_is_better
@@ -15,6 +17,15 @@ cognitive_complexity:
       healthy: 10
       warning: 15
       critical: 25
+  tools:
+    - name: sonarqube
+      metric_key: cognitive_complexity
+    - name: radon
+      command: "radon cc -s"
+      languages: [python]
+  references:
+    - https://www.sonarsource.com/docs/CognitiveComplexity.pdf
+    - https://blog.sonarsource.com/cognitive-complexity-because-testability-understandability
 
 cyclomatic_complexity:
   name: Cyclomatic Complexity
