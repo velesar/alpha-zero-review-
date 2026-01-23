@@ -15,6 +15,7 @@ pub enum RunnerError {
     ToolNotFound(String),
 
     #[error("Tool execution failed: {0}")]
+    #[allow(dead_code)]
     ExecutionFailed(String),
 
     #[error("Failed to parse tool output: {0}")]

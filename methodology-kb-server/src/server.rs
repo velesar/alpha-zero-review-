@@ -4,7 +4,7 @@
 //! methodology knowledge base for interpreting metrics, classifying findings,
 //! and checking compliance.
 
-use crate::acquisition::{DataAcquisition, DataSource, MetricData, AcquisitionStatus};
+use crate::acquisition::{DataAcquisition, DataSource};
 use crate::types::*;
 use anyhow::Result;
 use std::future::Future;
@@ -15,7 +15,7 @@ use rmcp::{
     tool_router,
     service::{RequestContext, RoleServer},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -24,6 +24,7 @@ use std::sync::Arc;
 /// Methodology KB MCP Server
 #[derive(Clone)]
 pub struct MethodologyKBServer {
+    #[allow(dead_code)]
     kb_path: PathBuf,
     kb: Arc<MethodologyKB>,
     acquisition: Arc<DataAcquisition>,
@@ -99,6 +100,7 @@ pub struct GetTemplateInput {
     /// Template type (e.g., "executive_summary", "root_cause")
     pub template_type: String,
     /// Output format (markdown, html)
+    #[allow(dead_code)]
     #[serde(default = "default_format")]
     pub format: String,
 }
@@ -128,10 +130,6 @@ pub struct GetAcquisitionStatusInput {
     #[serde(default = "default_commit")]
     pub commit: String,
 }
-
-/// Input for list_acquirable_metrics tool
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct ListAcquirableMetricsInput {}
 
 #[tool_router]
 impl MethodologyKBServer {

@@ -173,6 +173,7 @@ impl Sarif {
     }
 
     /// Get results grouped by rule ID
+    #[allow(dead_code)]
     pub fn results_by_rule(&self) -> std::collections::HashMap<String, Vec<&Result>> {
         let mut map = std::collections::HashMap::new();
         for run in &self.runs {
@@ -186,6 +187,7 @@ impl Sarif {
     }
 
     /// Get unique file paths from all results
+    #[allow(dead_code)]
     pub fn affected_files(&self) -> std::collections::HashSet<String> {
         let mut files = std::collections::HashSet::new();
         for run in &self.runs {

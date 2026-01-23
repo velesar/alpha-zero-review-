@@ -147,6 +147,7 @@ impl Codegraph {
     }
 
     /// Add a symbol to the graph
+    #[allow(dead_code)]
     pub fn add_symbol(&mut self, symbol: Symbol) {
         let id = symbol.id.clone();
         let file = symbol.file.clone();
@@ -159,6 +160,7 @@ impl Codegraph {
     }
 
     /// Add a reference
+    #[allow(dead_code)]
     pub fn add_reference(&mut self, reference: Reference) {
         let symbol_id = reference.symbol_id.clone();
 

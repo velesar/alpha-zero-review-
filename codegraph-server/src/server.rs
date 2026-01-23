@@ -3,7 +3,7 @@
 //! This module implements the MCP server that provides SCIP-based
 //! semantic code intelligence.
 
-use crate::graph::{Codegraph, Hotspot, Impact, ModuleDeps, Symbol};
+use crate::graph::Codegraph;
 use anyhow::Result;
 use std::future::Future;
 use rmcp::{

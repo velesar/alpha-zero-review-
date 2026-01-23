@@ -3,8 +3,8 @@
 //! This module implements the MCP server that manages the Mental Model,
 //! providing tools for reading, updating, and querying the model.
 
-use crate::artifacts::{ArtifactStore, AvailableArtifact, StoreArtifactMetadata, ArtifactInfo};
-use crate::model::{derive_constraints, Constraints, Finding, FindingContext, MentalModel, RootCause, Severity};
+use crate::artifacts::{ArtifactStore, AvailableArtifact, StoreArtifactMetadata};
+use crate::model::{derive_constraints, Finding, FindingContext, MentalModel, RootCause, Severity};
 use anyhow::Result;
 use std::future::Future;
 use rmcp::{

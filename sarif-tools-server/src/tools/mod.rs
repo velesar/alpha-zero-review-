@@ -55,6 +55,7 @@ impl ToolRegistry {
     }
 
     /// Get list of tool names
+    #[allow(dead_code)]
     pub fn tool_names(&self) -> Vec<String> {
         self.tools.keys().cloned().collect()
     }
