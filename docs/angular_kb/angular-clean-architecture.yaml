@@ -1,0 +1,306 @@
+# angular-clean-architecture.yaml
+# Standards specification for Angular application architecture patterns
+# Part of AI Code Audit Agent Methodology KB
+
+id: ANGULAR-CLEAN-001
+name: Angular Clean Architecture Standards
+version: "1.0"
+category: architecture
+framework: angular
+applicable_to:
+  - enterprise_applications
+  - spa_frontends
+  - admin_dashboards
+  - complex_forms
+
+description: |
+  Clean Architecture adapted for Angular's module system and dependency injection.
+  Angular's DI container, module boundaries, and TypeScript interfaces provide 
+  natural architectural guardrails. The key insight is that Angular's hierarchical
+  injector and module lazy-loading already enforce boundaries—you structure to
+  leverage these, not fight them.
+
+core_principles:
+  - id: SMART_DUMB_SEPARATION
+    name: "Smart/Dumb Component Split"
+    description: |
+      Container (smart) components handle state and orchestration.
+      Presentational (dumb) components receive data via @Input and emit 
+      events via @Output. Dumb components have zero dependencies on services.
+    
+  - id: FACADE_ABSTRACTION
+    name: "Facade Pattern for State"
+    description: |
+      Components interact with application state through facade services,
+      never directly with stores, HTTP services, or state management internals.
+      Facades are the "ports" in hexagonal architecture.
+    
+  - id: DOMAIN_PURITY
+    name: "Pure Domain Layer"
+    description: |
+      Domain models, interfaces, and business logic in dedicated folder.
+      Zero Angular dependencies—pure TypeScript only. Can be extracted
+      to shared library without modification.
+    
+  - id: FEATURE_ISOLATION
+    name: "Feature Module Boundaries"
+    description: |
+      Each feature is self-contained module with its own components, services,
+      and state. Cross-feature communication via shared services or events,
+      never direct imports between feature internals.
+
+structure_patterns:
+  nx_monorepo:
+    description: "For enterprise applications with multiple apps/libs"
+    layout:
+      - path: "libs/domain/"
+        purpose: "Pure domain models, interfaces, business rules"
+        dependencies: "None (pure TypeScript)"
+      - path: "libs/data-access/"
+        purpose: "State management, API services, repositories"
+        dependencies: "domain"
+      - path: "libs/feature-*/"
+        purpose: "Feature modules with smart/dumb components"
+        dependencies: "domain, data-access, ui"
+      - path: "libs/ui/"
+        purpose: "Shared presentational components, design system"
+        dependencies: "None or minimal"
+      - path: "apps/*/"
+        purpose: "Application shells, routing, configuration"
+        dependencies: "All relevant libs"
+    
+  standalone_app:
+    description: "For single applications without monorepo"
+    layout:
+      - path: "src/app/core/"
+        purpose: "Singleton services, guards, interceptors"
+        dependencies: "domain"
+      - path: "src/app/shared/"
+        purpose: "Reusable components, pipes, directives"
+        dependencies: "Minimal"
+      - path: "src/app/domain/"
+        purpose: "Models, interfaces, business logic"
+        dependencies: "None (pure TypeScript)"
+      - path: "src/app/features/*/"
+        purpose: "Feature modules (lazy-loaded)"
+        dependencies: "core, shared, domain"
+
+component_patterns:
+  smart_component:
+    characteristics:
+      - "Injects facade/state services"
+      - "Handles user interactions"
+      - "Orchestrates data flow"
+      - "Minimal template logic"
+    naming: "*.container.component.ts or *.smart.component.ts"
+    location: "feature/containers/ or feature/pages/"
+    
+  dumb_component:
+    characteristics:
+      - "Zero service injections"
+      - "Only @Input() and @Output()"
+      - "Pure presentation logic"
+      - "OnPush change detection"
+    naming: "*.component.ts (default) or *.ui.component.ts"
+    location: "feature/components/ or shared/components/"
+
+state_management:
+  patterns:
+    - name: "Facade + Service"
+      complexity: "Simple to Medium"
+      use_when: "< 50 components, straightforward state"
+      structure: |
+        Facade service wraps state service
+        Components only see facade
+        State service handles BehaviorSubjects
+    
+    - name: "NgRx Store"
+      complexity: "Medium to High"
+      use_when: "Complex state, time-travel debugging needed"
+      structure: |
+        Actions → Reducers → Store → Selectors
+        Effects for side effects
+        Facade optional but recommended
+    
+    - name: "Signals (Angular 16+)"
+      complexity: "Simple"
+      use_when: "Modern Angular, reactive state"
+      structure: |
+        signal() for state
+        computed() for derived state
+        effect() for side effects
+
+dependency_injection:
+  patterns:
+    - name: "providedIn: 'root'"
+      use_for: "Application-wide singletons"
+      scope: "Root injector"
+      
+    - name: "providedIn: Feature Module"
+      use_for: "Feature-scoped services"
+      scope: "Lazy-loaded module injector"
+      
+    - name: "Component providers"
+      use_for: "Component-scoped instances"
+      scope: "Component and children"
+      
+  abstraction:
+    pattern: "InjectionToken + useClass/useFactory"
+    purpose: "Swap implementations without changing consumers"
+    example: |
+      export const USER_REPOSITORY = new InjectionToken<UserRepository>('UserRepository');
+      providers: [{ provide: USER_REPOSITORY, useClass: HttpUserRepository }]
+
+error_handling:
+  http_layer:
+    pattern: "Interceptor + ErrorHandler"
+    responsibilities:
+      - "Global error catching"
+      - "Error transformation"
+      - "Logging and reporting"
+      
+  component_layer:
+    pattern: "AsyncPipe + error template"
+    responsibilities:
+      - "Display error states"
+      - "Retry mechanisms"
+      - "User feedback"
+
+testing_strategy:
+  unit_tests:
+    components:
+      - "Shallow testing for dumb components"
+      - "Mock services for smart components"
+      - "Spectator or Testing Library preferred"
+    services:
+      - "Mock HTTP with HttpTestingController"
+      - "Marble testing for RxJS streams"
+      
+  integration_tests:
+    pattern: "Feature module integration"
+    scope: "Smart component + real services + mock HTTP"
+    
+  e2e_tests:
+    tools: ["Cypress", "Playwright"]
+    scope: "Critical user journeys"
+
+quality_indicators:
+  healthy:
+    - "Clear smart/dumb component separation"
+    - "Feature modules are lazy-loaded"
+    - "OnPush change detection on presentational components"
+    - "No subscription leaks (async pipe or takeUntilDestroyed)"
+    - "Domain folder has zero Angular imports"
+    - "Services injected via interfaces/tokens"
+    
+  warning:
+    - "Components > 200 lines"
+    - "Direct HTTP calls in components"
+    - "Manual subscriptions without cleanup"
+    - "Shared module importing feature modules"
+    - "Business logic in templates"
+    
+  critical:
+    - "Circular dependencies between modules"
+    - "God components (> 500 lines, multiple responsibilities)"
+    - "State mutation outside designated services"
+    - "Framework code in domain layer"
+    - "No lazy loading for large feature modules"
+
+anti_patterns:
+  - id: AP-NG-001
+    name: "Subscription Leak"
+    description: "Manual .subscribe() without unsubscribe"
+    symptom: "Memory leaks, stale callbacks, multiple HTTP calls"
+    fix: "Use async pipe, takeUntilDestroyed(), or explicit cleanup"
+    
+  - id: AP-NG-002
+    name: "God Component"
+    description: "Component handling multiple unrelated concerns"
+    symptom: "> 300 lines, > 5 injected services, mixed presentation/logic"
+    fix: "Extract to smart/dumb hierarchy, facade pattern"
+    
+  - id: AP-NG-003
+    name: "Template Logic Abuse"
+    description: "Complex logic in HTML templates"
+    symptom: "Nested ternaries, function calls in bindings, heavy *ngIf chains"
+    fix: "Move to component class, use computed signals or getter"
+    
+  - id: AP-NG-004
+    name: "Service Locator"
+    description: "Using Injector.get() instead of constructor injection"
+    symptom: "Dynamic service resolution, hidden dependencies"
+    fix: "Explicit constructor injection, InjectionToken for abstractions"
+    
+  - id: AP-NG-005
+    name: "Barrel Export Explosion"
+    description: "Deep re-exports causing circular dependencies"
+    symptom: "Build errors, undefined imports, slow compilation"
+    fix: "Flatten exports, explicit imports, lint rules"
+    
+  - id: AP-NG-006
+    name: "Shared Module Bloat"
+    description: "SharedModule imports everything, used everywhere"
+    symptom: "Large bundle size, slow lazy loading, circular deps"
+    fix: "Granular shared modules or standalone components"
+
+performance_patterns:
+  change_detection:
+    - "OnPush for all presentational components"
+    - "Immutable data patterns with state management"
+    - "trackBy for *ngFor directives"
+    
+  bundle_optimization:
+    - "Lazy loading all feature modules"
+    - "Preloading strategy for critical routes"
+    - "Tree-shakeable providers (providedIn)"
+    
+  runtime:
+    - "Virtual scrolling for large lists"
+    - "Debounce/throttle user inputs"
+    - "Memoization for expensive computations"
+
+mapping_to_viewpoints:
+  VP-F01:
+    check: "Angular version, CLI version, state management library"
+  VP-F02:
+    check: "Nx monorepo vs standalone, module organization"
+  VP-S02:
+    check: "Layer boundaries via module imports, DI hierarchy"
+    severity_adjustment: "Feature imports from another feature = HIGH"
+  VP-S03:
+    check: "Feature modules as bounded contexts"
+  VP-S06:
+    check: "Module dependency graph, circular dependencies"
+  VP-Q01:
+    check: "HTTP interceptors, auth guards, XSS protection"
+  VP-Q02:
+    check: "Change detection strategy, bundle size, lazy loading"
+  VP-Q03:
+    check: "TestBed usage, mock patterns, coverage by layer"
+
+angular_version_considerations:
+  v14_plus:
+    features: ["Standalone components", "Typed forms", "inject() function"]
+    patterns: ["Can skip NgModules for simple cases"]
+    
+  v16_plus:
+    features: ["Signals", "Required inputs", "takeUntilDestroyed"]
+    patterns: ["Signal-based state management", "Zoneless apps possible"]
+    
+  v17_plus:
+    features: ["Control flow (@if, @for)", "Deferrable views", "SSR improvements"]
+    patterns: ["Built-in control flow over structural directives"]
+
+reference_implementations:
+  - name: "Angular Architecture Patterns"
+    url: "https://github.com/nickontreras/angular-clean-architecture"
+    relevance: "Clean architecture implementation"
+    
+  - name: "Nx Examples"
+    url: "https://github.com/nrwl/nx-examples"
+    relevance: "Monorepo organization patterns"
+    
+  - name: "NgRx Example App"
+    url: "https://github.com/ngrx/platform/tree/main/projects/example-app"
+    relevance: "State management best practices"
