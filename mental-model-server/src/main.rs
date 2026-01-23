@@ -4,6 +4,7 @@
 //! which provides tools for managing the central mental model artifact
 //! used in AI Code Audit.
 
+mod artifacts;
 mod model;
 mod server;
 

@@ -3,6 +3,7 @@
 //! This module implements the MCP server that manages the Mental Model,
 //! providing tools for reading, updating, and querying the model.
 
+use crate::artifacts::{ArtifactStore, AvailableArtifact, StoreArtifactMetadata, ArtifactInfo};
 use crate::model::{derive_constraints, Constraints, Finding, FindingContext, MentalModel, RootCause, Severity};
 use anyhow::Result;
 use std::future::Future;
@@ -25,6 +26,7 @@ use uuid::Uuid;
 pub struct MentalModelServer {
     model_path: PathBuf,
     model: Arc<RwLock<MentalModel>>,
+    artifact_store: Arc<ArtifactStore>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -92,6 +94,69 @@ pub struct InitModelInput {
     pub repository: Option<String>,
 }
 
+/// Input for get_commit_artifacts tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetCommitArtifactsInput {
+    /// Commit hash, "HEAD", or "latest"
+    #[serde(default = "default_commit")]
+    pub commit: String,
+}
+
+fn default_commit() -> String {
+    "HEAD".to_string()
+}
+
+/// Input for store_artifact tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct StoreArtifactInput {
+    /// Commit hash
+    pub commit: String,
+    /// Artifact type (semgrep, bandit, ruff, trivy, scip, coverage, etc.)
+    #[serde(rename = "type")]
+    pub artifact_type: String,
+    /// Artifact data (JSON string for SARIF, base64 for binary)
+    pub data: String,
+    /// Producer of the artifact
+    pub producer: String,
+}
+
+/// Input for get_artifact tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetArtifactInput {
+    /// Commit hash, "HEAD", or "latest"
+    #[serde(default = "default_commit")]
+    pub commit: String,
+    /// Artifact type
+    #[serde(rename = "type")]
+    pub artifact_type: String,
+}
+
+/// Output for get_commit_artifacts
+#[derive(Debug, Serialize)]
+pub struct GetCommitArtifactsOutput {
+    pub commit: String,
+    pub available: Vec<AvailableArtifact>,
+    pub missing: Vec<String>,
+}
+
+/// Output for store_artifact
+#[derive(Debug, Serialize)]
+pub struct StoreArtifactOutput {
+    pub stored_at: String,
+    pub commit: String,
+    pub artifact_type: String,
+}
+
+/// Output for get_artifact
+#[derive(Debug, Serialize)]
+pub struct GetArtifactOutput {
+    pub data: String,
+    pub commit: String,
+    pub artifact_type: String,
+    pub produced_at: String,
+    pub producer: String,
+}
+
 #[tool_router]
 impl MentalModelServer {
     pub fn new(model_path: PathBuf) -> Self {
@@ -104,9 +169,17 @@ impl MentalModelServer {
             MentalModel::default()
         };
 
+        // Get project path from model or use current directory
+        let project_path = if !model.project.path.is_empty() {
+            PathBuf::from(&model.project.path)
+        } else {
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        };
+
         Self {
             model_path,
             model: Arc::new(RwLock::new(model)),
+            artifact_store: Arc::new(ArtifactStore::new(project_path)),
             tool_router: Self::tool_router(),
         }
     }
@@ -336,6 +409,89 @@ impl MentalModelServer {
         let json = serde_json::to_string_pretty(&model.completed_viewpoints).map_err(|e| {
             rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
         })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Get available and missing artifacts for a commit
+    #[tool(description = "List available and missing artifacts for a specific commit. Use 'HEAD' or 'latest' for current commit.")]
+    async fn get_commit_artifacts(&self, input: Parameters<GetCommitArtifactsInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
+
+        let commit = self.artifact_store.resolve_commit(&input.commit)
+            .map_err(|e| rmcp::Error::internal_error(format!("Failed to resolve commit: {}", e), None))?;
+
+        let (available, missing) = self.artifact_store.get_commit_artifacts(&commit)
+            .map_err(|e| rmcp::Error::internal_error(format!("Failed to get artifacts: {}", e), None))?;
+
+        let output = GetCommitArtifactsOutput {
+            commit,
+            available,
+            missing,
+        };
+
+        let json = serde_json::to_string_pretty(&output)
+            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Store an artifact for a commit
+    #[tool(description = "Store a tool output artifact (SARIF, SCIP, coverage) for a specific commit. Data should be JSON for SARIF or base64 for binary.")]
+    async fn store_artifact(&self, input: Parameters<StoreArtifactInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
+
+        let commit = self.artifact_store.resolve_commit(&input.commit)
+            .map_err(|e| rmcp::Error::internal_error(format!("Failed to resolve commit: {}", e), None))?;
+
+        let metadata = StoreArtifactMetadata {
+            producer: input.producer,
+            produced_at: None,
+        };
+
+        let stored_at = self.artifact_store.store_artifact(
+            &commit,
+            &input.artifact_type,
+            input.data.as_bytes(),
+            &metadata,
+        ).map_err(|e| rmcp::Error::internal_error(format!("Failed to store artifact: {}", e), None))?;
+
+        let output = StoreArtifactOutput {
+            stored_at,
+            commit,
+            artifact_type: input.artifact_type,
+        };
+
+        let json = serde_json::to_string_pretty(&output)
+            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Retrieve an artifact for a commit
+    #[tool(description = "Retrieve a stored artifact by commit and type. Returns the artifact data along with metadata.")]
+    async fn get_artifact(&self, input: Parameters<GetArtifactInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
+
+        let commit = self.artifact_store.resolve_commit(&input.commit)
+            .map_err(|e| rmcp::Error::internal_error(format!("Failed to resolve commit: {}", e), None))?;
+
+        let (data, info) = self.artifact_store.get_artifact(&commit, &input.artifact_type)
+            .map_err(|e| rmcp::Error::internal_error(format!("Artifact not found: {}", e), None))?;
+
+        let data_str = String::from_utf8(data)
+            .unwrap_or_else(|e| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, e.into_bytes()));
+
+        let output = GetArtifactOutput {
+            data: data_str,
+            commit,
+            artifact_type: input.artifact_type,
+            produced_at: info.produced_at.to_rfc3339(),
+            producer: info.producer,
+        };
+
+        let json = serde_json::to_string_pretty(&output)
+            .map_err(|e| rmcp::Error::internal_error(format!("Serialization error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }

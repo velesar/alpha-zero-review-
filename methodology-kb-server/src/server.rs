@@ -4,6 +4,7 @@
 //! methodology knowledge base for interpreting metrics, classifying findings,
 //! and checking compliance.
 
+use crate::acquisition::{DataAcquisition, DataSource, MetricData, AcquisitionStatus};
 use crate::types::*;
 use anyhow::Result;
 use std::future::Future;
@@ -25,6 +26,7 @@ use std::sync::Arc;
 pub struct MethodologyKBServer {
     kb_path: PathBuf,
     kb: Arc<MethodologyKB>,
+    acquisition: Arc<DataAcquisition>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -105,14 +107,46 @@ fn default_format() -> String {
     "markdown".to_string()
 }
 
+/// Input for get_metric_data tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetMetricDataInput {
+    /// Metric name to retrieve
+    pub metric: String,
+    /// Commit hash (default: HEAD)
+    #[serde(default = "default_commit")]
+    pub commit: String,
+}
+
+fn default_commit() -> String {
+    "HEAD".to_string()
+}
+
+/// Input for get_acquisition_status tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetAcquisitionStatusInput {
+    /// Commit hash (default: HEAD)
+    #[serde(default = "default_commit")]
+    pub commit: String,
+}
+
+/// Input for list_acquirable_metrics tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListAcquirableMetricsInput {}
+
 #[tool_router]
 impl MethodologyKBServer {
     pub fn new(kb_path: PathBuf) -> Self {
         let kb = Self::load_kb(&kb_path).unwrap_or_default();
 
+        // Get project path from current directory or parent of kb_path
+        let project_path = std::env::current_dir().unwrap_or_else(|_| {
+            kb_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."))
+        });
+
         Self {
             kb_path,
             kb: Arc::new(kb),
+            acquisition: Arc::new(DataAcquisition::new(project_path)),
             tool_router: Self::tool_router(),
         }
     }
@@ -519,6 +553,70 @@ impl MethodologyKBServer {
                 self.kb.categories.keys().cloned().collect::<Vec<_>>().join(", ")
             ))]))
         }
+    }
+
+    // =========== Data Acquisition Tools ===========
+
+    /// Get metric data with automatic cascade
+    #[tool(description = "Get metric data for a commit. Checks artifact cache first, returns data with provenance information. If data unavailable, indicates which tool to run.")]
+    async fn get_metric_data(&self, input: Parameters<GetMetricDataInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
+
+        let data = self.acquisition.get_metric_data(&input.commit, &input.metric)
+            .map_err(|e| rmcp::Error::internal_error(format!("Acquisition error: {}", e), None))?;
+
+        let json = serde_json::to_string_pretty(&data).map_err(|e| {
+            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        let status = match data.source {
+            DataSource::Cache => "from cache",
+            DataSource::Fresh => "freshly acquired",
+            DataSource::Derived => "derived from other metrics",
+            DataSource::Unavailable => "unavailable - tool execution needed",
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Metric '{}' [{}]:\n\n{}",
+            input.metric, status, json
+        ))]))
+    }
+
+    /// Get acquisition status for a commit
+    #[tool(description = "Get the status of data acquisition for a commit. Shows which metrics are available, which are missing, and which tools need to be run.")]
+    async fn get_acquisition_status(&self, input: Parameters<GetAcquisitionStatusInput>) -> Result<CallToolResult, rmcp::Error> {
+        let input = input.0;
+
+        let status = self.acquisition.get_acquisition_status(&input.commit)
+            .map_err(|e| rmcp::Error::internal_error(format!("Acquisition error: {}", e), None))?;
+
+        let json = serde_json::to_string_pretty(&status).map_err(|e| {
+            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Acquisition status for commit {}:\n\nAvailable: {}\nMissing: {}\nTools needed: {}\n\n{}",
+            status.commit,
+            status.available_metrics.len(),
+            status.missing_metrics.len(),
+            status.tools_needed.join(", "),
+            json
+        ))]))
+    }
+
+    /// List acquirable metrics
+    #[tool(description = "List all metrics that can be acquired through tool execution and caching.")]
+    async fn list_acquirable_metrics(&self) -> Result<CallToolResult, rmcp::Error> {
+        let metrics = self.acquisition.list_available_metrics();
+
+        let json = serde_json::to_string_pretty(&metrics).map_err(|e| {
+            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Acquirable metrics ({}):\n\n{}",
+            metrics.len(), json
+        ))]))
     }
 }
 

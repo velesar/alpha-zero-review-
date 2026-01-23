@@ -1,0 +1,372 @@
+# AI Code Audit - Artifact Generation Workflow
+# This workflow generates SARIF artifacts from security and quality tools
+# for use with the AI Code Audit Agent
+
+name: Audit Artifacts
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
+    inputs:
+      tools:
+        description: 'Tools to run (comma-separated: semgrep,bandit,ruff,trivy,scip)'
+        default: 'semgrep,bandit,ruff,trivy'
+        required: false
+      target_path:
+        description: 'Path to analyze'
+        default: '.'
+        required: false
+
+env:
+  AUDIT_ARTIFACTS_DIR: .audit/artifacts
+
+jobs:
+  detect-language:
+    runs-on: ubuntu-latest
+    outputs:
+      has_python: ${{ steps.detect.outputs.has_python }}
+      has_javascript: ${{ steps.detect.outputs.has_javascript }}
+      has_typescript: ${{ steps.detect.outputs.has_typescript }}
+      has_go: ${{ steps.detect.outputs.has_go }}
+      has_rust: ${{ steps.detect.outputs.has_rust }}
+      has_java: ${{ steps.detect.outputs.has_java }}
+      has_docker: ${{ steps.detect.outputs.has_docker }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect languages
+        id: detect
+        run: |
+          # Detect Python
+          if find . -name "*.py" -type f | head -1 | grep -q .; then
+            echo "has_python=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_python=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Detect JavaScript
+          if find . -name "*.js" -type f | head -1 | grep -q .; then
+            echo "has_javascript=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_javascript=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Detect TypeScript
+          if find . -name "*.ts" -o -name "*.tsx" -type f | head -1 | grep -q .; then
+            echo "has_typescript=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_typescript=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Detect Go
+          if find . -name "*.go" -type f | head -1 | grep -q .; then
+            echo "has_go=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_go=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Detect Rust
+          if find . -name "*.rs" -type f | head -1 | grep -q .; then
+            echo "has_rust=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_rust=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Detect Java
+          if find . -name "*.java" -type f | head -1 | grep -q .; then
+            echo "has_java=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_java=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Detect Docker
+          if find . -name "Dockerfile*" -o -name "docker-compose*.yml" -type f | head -1 | grep -q .; then
+            echo "has_docker=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_docker=false" >> $GITHUB_OUTPUT
+          fi
+
+  semgrep:
+    needs: detect-language
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.tools || 'semgrep', 'semgrep')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create artifacts directory
+        run: mkdir -p ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}
+
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+          generateSarif: "1"
+        env:
+          SEMGREP_RULES: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+
+      - name: Move SARIF output
+        run: |
+          if [ -f semgrep.sarif ]; then
+            mv semgrep.sarif ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/semgrep.sarif
+          fi
+
+      - name: Upload Semgrep SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-sarif
+          path: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/semgrep.sarif
+          if-no-files-found: ignore
+
+      - name: Upload to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/semgrep.sarif
+        continue-on-error: true
+
+  bandit:
+    needs: detect-language
+    runs-on: ubuntu-latest
+    if: needs.detect-language.outputs.has_python == 'true' && contains(github.event.inputs.tools || 'bandit', 'bandit')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create artifacts directory
+        run: mkdir -p ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}
+
+      - name: Install Bandit
+        run: pip install bandit[sarif]
+
+      - name: Run Bandit
+        run: |
+          bandit -r ${{ github.event.inputs.target_path || '.' }} \
+            -f sarif \
+            -o ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/bandit.sarif \
+            --exit-zero \
+            -ll
+
+      - name: Upload Bandit SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-sarif
+          path: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/bandit.sarif
+
+      - name: Upload to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/bandit.sarif
+        continue-on-error: true
+
+  ruff:
+    needs: detect-language
+    runs-on: ubuntu-latest
+    if: needs.detect-language.outputs.has_python == 'true' && contains(github.event.inputs.tools || 'ruff', 'ruff')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create artifacts directory
+        run: mkdir -p ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}
+
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Run Ruff
+        run: |
+          ruff check ${{ github.event.inputs.target_path || '.' }} \
+            --output-format sarif \
+            --output-file ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/ruff.sarif \
+            --exit-zero
+
+      - name: Upload Ruff SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-sarif
+          path: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/ruff.sarif
+
+      - name: Upload to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/ruff.sarif
+        continue-on-error: true
+
+  trivy:
+    needs: detect-language
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.tools || 'trivy', 'trivy')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create artifacts directory
+        run: mkdir -p ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: ${{ github.event.inputs.target_path || '.' }}
+          format: 'sarif'
+          output: '${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/trivy.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          vuln-type: 'os,library'
+
+      - name: Upload Trivy SARIF
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sarif
+          path: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/trivy.sarif
+
+      - name: Upload to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/trivy.sarif
+        continue-on-error: true
+
+  scip-index:
+    needs: detect-language
+    runs-on: ubuntu-latest
+    if: contains(github.event.inputs.tools || '', 'scip')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create artifacts directory
+        run: mkdir -p ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}
+
+      - name: Install scip-python
+        if: needs.detect-language.outputs.has_python == 'true'
+        run: pip install scip-python
+
+      - name: Generate Python SCIP index
+        if: needs.detect-language.outputs.has_python == 'true'
+        run: |
+          scip-python index . \
+            --output ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/scip.scip
+        continue-on-error: true
+
+      - name: Install scip-typescript
+        if: needs.detect-language.outputs.has_typescript == 'true' || needs.detect-language.outputs.has_javascript == 'true'
+        run: npm install -g @anthropic/scip-typescript
+
+      - name: Generate TypeScript SCIP index
+        if: needs.detect-language.outputs.has_typescript == 'true' || needs.detect-language.outputs.has_javascript == 'true'
+        run: |
+          scip-typescript index . \
+            --output ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/scip.scip
+        continue-on-error: true
+
+      - name: Upload SCIP index
+        uses: actions/upload-artifact@v4
+        with:
+          name: scip-index
+          path: ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/scip.scip
+          if-no-files-found: ignore
+
+  combine-artifacts:
+    needs: [semgrep, bandit, ruff, trivy, scip-index]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create artifacts directory
+        run: mkdir -p ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+
+      - name: Combine artifacts
+        run: |
+          # Move all SARIF files to the commit directory
+          find downloaded-artifacts -name "*.sarif" -exec cp {} ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/ \;
+          find downloaded-artifacts -name "*.scip" -exec cp {} ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/ \;
+
+          # Create metadata file
+          cat > ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml << EOF
+          commit: ${{ github.sha }}
+          branch: ${{ github.ref_name }}
+          timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          artifacts:
+          EOF
+
+          # Add artifact entries
+          for f in ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/*.sarif; do
+            if [ -f "$f" ]; then
+              name=$(basename "$f" .sarif)
+              echo "  $name:" >> ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml
+              echo "    produced_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml
+              echo "    producer: github-actions" >> ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml
+              echo "    size_bytes: $(stat -f%z "$f" 2>/dev/null || stat -c%s "$f")" >> ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml
+            fi
+          done
+
+          if [ -f "${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/scip.scip" ]; then
+            echo "  scip:" >> ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml
+            echo "    produced_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml
+            echo "    producer: github-actions" >> ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml
+            echo "    size_bytes: $(stat -f%z "${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/scip.scip" 2>/dev/null || stat -c%s "${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/scip.scip")" >> ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml
+          fi
+
+          # Create latest symlink content
+          echo "${{ github.sha }}" > ${{ env.AUDIT_ARTIFACTS_DIR }}/latest
+
+          # List all artifacts
+          echo "=== Audit Artifacts for ${{ github.sha }} ==="
+          ls -la ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/
+          echo ""
+          echo "=== Metadata ==="
+          cat ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/_meta.yaml
+
+      - name: Upload combined artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-artifacts-${{ github.sha }}
+          path: ${{ env.AUDIT_ARTIFACTS_DIR }}
+          retention-days: 30
+
+      - name: Generate summary
+        run: |
+          echo "## Audit Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Available Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tool | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          for tool in semgrep bandit ruff trivy scip; do
+            ext="sarif"
+            if [ "$tool" = "scip" ]; then ext="scip"; fi
+            if [ -f "${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/$tool.$ext" ]; then
+              echo "| $tool | Generated |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| $tool | Not generated |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the artifacts from the Actions tab to use with the AI Code Audit Agent." >> $GITHUB_STEP_SUMMARY

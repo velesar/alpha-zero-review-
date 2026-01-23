@@ -4,6 +4,7 @@
 //! which provides tools for interpreting metrics, classifying findings,
 //! and checking compliance against standards.
 
+mod acquisition;
 mod server;
 mod types;
 
