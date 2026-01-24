@@ -1,0 +1,180 @@
+# AI Code Audit - Manual Audit Workflow
+# Run this workflow manually to trigger a full audit
+
+name: Manual Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      audit_scope:
+        description: 'Scope of audit'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - security-only
+          - quality-only
+          - dependencies-only
+      generate_scip:
+        description: 'Generate SCIP index for code intelligence'
+        type: boolean
+        default: false
+      retain_days:
+        description: 'Days to retain artifacts'
+        type: number
+        default: 30
+
+env:
+  AUDIT_DIR: .audit/artifacts
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Create artifacts directory
+        run: |
+          COMMIT=$(git rev-parse --short HEAD)
+          mkdir -p ${{ env.AUDIT_DIR }}/$COMMIT
+          echo "COMMIT_SHORT=$COMMIT" >> $GITHUB_ENV
+          echo "COMMIT_FULL=${{ github.sha }}" >> $GITHUB_ENV
+
+      - name: Install security tools
+        if: inputs.audit_scope == 'full' || inputs.audit_scope == 'security-only'
+        run: |
+          pip install bandit[sarif]
+          pip install semgrep
+
+      - name: Install quality tools
+        if: inputs.audit_scope == 'full' || inputs.audit_scope == 'quality-only'
+        run: |
+          pip install ruff
+
+      - name: Run Semgrep (security)
+        if: inputs.audit_scope == 'full' || inputs.audit_scope == 'security-only'
+        run: |
+          semgrep scan . \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --sarif \
+            --output=${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/semgrep.sarif \
+            || true
+        continue-on-error: true
+
+      - name: Run Bandit (Python security)
+        if: inputs.audit_scope == 'full' || inputs.audit_scope == 'security-only'
+        run: |
+          if find . -name "*.py" -type f | head -1 | grep -q .; then
+            bandit -r . -f sarif -o ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/bandit.sarif --exit-zero -ll
+          fi
+        continue-on-error: true
+
+      - name: Run Ruff (Python quality)
+        if: inputs.audit_scope == 'full' || inputs.audit_scope == 'quality-only'
+        run: |
+          if find . -name "*.py" -type f | head -1 | grep -q .; then
+            ruff check . --output-format sarif --output-file ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/ruff.sarif --exit-zero
+          fi
+        continue-on-error: true
+
+      - name: Run Trivy (dependencies)
+        if: inputs.audit_scope == 'full' || inputs.audit_scope == 'dependencies-only'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: '${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/trivy.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+        continue-on-error: true
+
+      - name: Generate SCIP index
+        if: inputs.generate_scip
+        run: |
+          # Try Python SCIP
+          if find . -name "*.py" -type f | head -1 | grep -q .; then
+            pip install scip-python
+            scip-python index . --output ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/scip.scip || true
+          fi
+
+          # Try TypeScript SCIP
+          if find . -name "*.ts" -o -name "*.tsx" -type f | head -1 | grep -q .; then
+            npm install -g @anthropic/scip-typescript
+            scip-typescript index . --output ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/scip.scip || true
+          fi
+        continue-on-error: true
+
+      - name: Generate metadata
+        run: |
+          cat > ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml << EOF
+          commit: ${{ env.COMMIT_FULL }}
+          commit_short: ${{ env.COMMIT_SHORT }}
+          branch: ${{ github.ref_name }}
+          timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          audit_scope: ${{ inputs.audit_scope }}
+          triggered_by: ${{ github.actor }}
+          artifacts:
+          EOF
+
+          for f in ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/*.sarif; do
+            if [ -f "$f" ]; then
+              name=$(basename "$f" .sarif)
+              echo "  $name:" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+              echo "    produced_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+              echo "    producer: github-actions-manual" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+            fi
+          done
+
+          if [ -f "${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/scip.scip" ]; then
+            echo "  scip:" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+            echo "    produced_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+            echo "    producer: github-actions-manual" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+          fi
+
+          echo "${{ env.COMMIT_SHORT }}" > ${{ env.AUDIT_DIR }}/latest
+
+      - name: List artifacts
+        run: |
+          echo "=== Audit Artifacts ==="
+          ls -la ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/
+          echo ""
+          echo "=== Metadata ==="
+          cat ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-${{ env.COMMIT_SHORT }}-${{ inputs.audit_scope }}
+          path: ${{ env.AUDIT_DIR }}
+          retention-days: ${{ inputs.retain_days }}
+
+      - name: Generate summary
+        run: |
+          echo "## Manual Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ env.COMMIT_SHORT }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Scope | ${{ inputs.audit_scope }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SCIP Index | ${{ inputs.generate_scip }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Generated Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          ls ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/ | while read f; do
+            echo "- \`$f\`" >> $GITHUB_STEP_SUMMARY
+          done

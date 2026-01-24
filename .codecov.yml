@@ -1,0 +1,50 @@
+# Codecov Configuration
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  status:
+    project:
+      default:
+        target: 70%
+        threshold: 5%
+        informational: true
+    patch:
+      default:
+        target: 80%
+        threshold: 10%
+        informational: true
+
+  # Don't fail PR checks for coverage drops
+  round: down
+  precision: 1
+
+# Ignore test files and generated code
+ignore:
+  - "*/tests/*"
+  - "*/main.rs"
+  - "target/**"
+
+# Comment settings for PRs
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: true
+
+# Flags for different components (optional)
+flags:
+  mental-model:
+    paths:
+      - mental-model-server/
+    carryforward: true
+  methodology-kb:
+    paths:
+      - methodology-kb-server/
+    carryforward: true
+  sarif-tools:
+    paths:
+      - sarif-tools-server/
+    carryforward: true
+  codegraph:
+    paths:
+      - codegraph-server/
+    carryforward: true

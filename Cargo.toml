@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["mental-model-server", "methodology-kb-server"]
+members = ["mental-model-server", "methodology-kb-server", "sarif-tools-server", "codegraph-server"]
 
 [workspace.dependencies]
 rmcp = { version = "0.3", features = ["server", "transport-io"] }
@@ -16,3 +16,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 glob = "0.3"
+# Beta-Zero additions
+which = "7"
+tempfile = "3"
+prost = "0.13"
+prost-build = "0.13"

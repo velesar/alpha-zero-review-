@@ -1,0 +1,265 @@
+# rust-hexagonal-architecture.yaml
+# Standards specification for Rust server architecture patterns
+# Part of AI Code Audit Agent Methodology KB
+
+id: RUST-HEX-001
+name: Rust Hexagonal Architecture Standards
+version: "1.0"
+category: architecture
+language: rust
+applicable_to:
+  - protocol_servers
+  - api_servers
+  - backend_services
+  - mcp_servers
+
+description: |
+  Hexagonal Architecture (Ports and Adapters) adapted for Rust's type system.
+  Rust's trait system maps directly to the "ports" concept, and Cargo workspaces 
+  enforce architectural boundaries at compile time.
+
+core_principles:
+  - id: TRAIT_AS_PORT
+    name: "Traits Define Ports"
+    description: |
+      Repository traits in domain layer define outbound ports (what operations 
+      business logic needs). Service traits define inbound ports (commands from 
+      outside world). This maps Rust's type system to hexagonal architecture 
+      naturally.
+    
+  - id: STRUCT_AS_ADAPTER
+    name: "Structs Implement Adapters"
+    description: |
+      Concrete implementations (SQLite, PostgreSQL, HTTP handlers) are adapter 
+      structs that implement port traits. They live in infrastructure layer, 
+      never domain.
+    
+  - id: DOMAIN_PURITY
+    name: "Domain Core Remains Pure"
+    description: |
+      Domain layer contains only pure structs, enums, and business logic.
+      Zero external dependencies except fundamental utilities (thiserror).
+      Framework-agnostic by design.
+    
+  - id: COMPILE_TIME_BOUNDARIES
+    name: "Compiler Enforces Architecture"
+    description: |
+      Workspace structure makes violations impossible to compile. When domain 
+      crate cannot list infrastructure crate in Cargo.toml, you physically 
+      cannot import database code into business logic.
+
+structure_patterns:
+  single_crate:
+    description: "For projects under ~10,000 LOC or compile times under 2 minutes"
+    layout:
+      - path: "src/domain/"
+        purpose: "Models, repository traits, domain errors"
+        dependencies: "None except thiserror"
+      - path: "src/inbound/"
+        purpose: "HTTP handlers, CLI, protocol listeners"
+        dependencies: "domain, framework types"
+      - path: "src/outbound/"
+        purpose: "Database implementations, external API clients"
+        dependencies: "domain, database drivers"
+    
+  workspace:
+    description: "For projects over ~15,000 LOC or needing compile-time boundary enforcement"
+    threshold_indicators:
+      - "Incremental compile times exceed 2 minutes"
+      - "Multiple developers working on different layers"
+      - "Need compile-time guarantee of dependency rules"
+    layout:
+      - crate: "domain"
+        purpose: "Business entities and repository traits"
+        dependencies: ["thiserror"]
+      - crate: "application"
+        purpose: "Use cases and service orchestration"
+        dependencies: ["domain"]
+      - crate: "infrastructure"
+        purpose: "Database implementations, external services"
+        dependencies: ["domain", "application", "sqlx", "etc."]
+      - crate: "server"
+        purpose: "Binary entry point, handler wiring"
+        dependencies: ["all crates", "framework"]
+      - crate: "common"
+        purpose: "Shared error types, configuration, utilities"
+        dependencies: ["minimal"]
+
+dependency_injection:
+  pattern: "Trait-based (no frameworks)"
+  rationale: |
+    Rust doesn't need Spring or DI containers. The language's trait system 
+    provides compile-time dependency injection that's both more performant 
+    and more explicit than reflection-based alternatives.
+  
+  approaches:
+    - name: "Generic Parameters"
+      use_when: "Performance-critical hot paths"
+      trade_off: "Complex type signatures, monomorphization"
+      example: |
+        pub struct MessageService<R: MessageRepository> {
+            repo: R,
+        }
+    
+    - name: "Trait Objects (Arc<dyn Trait>)"
+      use_when: "Most applications (recommended default)"
+      trade_off: "Small runtime cost (dynamic dispatch)"
+      example: |
+        pub struct MessageService {
+            repo: Arc<dyn MessageRepository + Send + Sync>,
+        }
+    
+    - name: "Newtype Pattern"
+      use_when: "Need to hide implementation details"
+      trade_off: "Extra wrapper type"
+      example: |
+        pub struct Connection(Arc<dyn Db + Send + Sync>);
+
+error_handling:
+  domain_layer:
+    library: "thiserror"
+    rationale: "Typed enums for matching on specific error variants"
+    pattern: |
+      #[derive(Error, Debug)]
+      pub enum DomainError {
+          #[error("User not found: {0}")]
+          UserNotFound(UserId),
+          #[error("Validation failed: {0}")]
+          ValidationError(String),
+          #[error("Database error")]
+          DatabaseError(#[from] sqlx::Error),
+      }
+  
+  application_layer:
+    library: "anyhow"
+    rationale: "Aggregating errors, context attachment, logging"
+    pattern: |
+      fn process() -> anyhow::Result<()> {
+          operation().context("Failed during processing")?;
+          Ok(())
+      }
+  
+  boundary_mapping:
+    description: "From implementations map domain errors to HTTP/protocol responses"
+    location: "Handler layer boundaries"
+
+state_management:
+  immutable_shared:
+    pattern: "Arc<T>"
+    use_for: "Configuration, static data, read-only state"
+  
+  mutable_shared:
+    patterns:
+      - name: "Arc<Mutex<T>>"
+        use_for: "General mutable state"
+      - name: "Arc<RwLock<T>>"
+        use_for: "Read-heavy workloads"
+      - name: "Mutex Sharding"
+        use_for: "High-contention scenarios"
+  
+  async_considerations:
+    - "Use tokio::sync::Mutex for locks held across .await points"
+    - "Use std::sync::Mutex for quick synchronous critical sections"
+    - "Keep lock scopes minimal: acquire, operate, release, then await"
+
+testing_strategy:
+  unit_tests:
+    pattern: "Inject mock implementations of repository traits"
+    requirement: "Domain logic tests require zero I/O"
+    example: "In-memory or SQLite implementations for 'realistic' behavior"
+  
+  integration_tests:
+    pattern: "Fully wired fake dependencies"
+    requirement: "cargo test must work immediately after git clone"
+  
+  external_tests:
+    pattern: "Tests requiring databases marked #[ignore]"
+    execution: "Run separately in CI with real infrastructure"
+
+quality_indicators:
+  healthy:
+    - "Clear layer boundaries visible in module/crate structure"
+    - "Domain crate has zero framework dependencies"
+    - "Handlers contain only orchestration, no business logic"
+    - "Repository traits defined at domain level"
+    - "Tests run without external dependencies"
+  
+  warning:
+    - "Framework types leaking into domain layer"
+    - "Business logic in handler functions"
+    - "Excessive .clone() calls suggesting ownership issues"
+    - "Generic type parameters everywhere (consider trait objects)"
+  
+  critical:
+    - "Circular dependencies between layers"
+    - "Infrastructure imports in domain crate"
+    - "Blocking I/O in async code"
+    - "Holding locks across await points"
+    - "unwrap() outside test code"
+
+anti_patterns:
+  - id: AP-RUST-001
+    name: "Excessive Clone"
+    description: "Frequent .clone() calls indicate ownership model issues"
+    fix: "Use Arc for shared ownership, references where possible"
+  
+  - id: AP-RUST-002
+    name: "Blocking in Async"
+    description: "Synchronous I/O in async context blocks runtime"
+    fix: "Use spawn_blocking or async alternatives"
+  
+  - id: AP-RUST-003
+    name: "Unwrap in Production"
+    description: "unwrap()/expect() outside tests risks panics"
+    fix: "Use proper error handling with Result types"
+  
+  - id: AP-RUST-004
+    name: "Generic Box<dyn Error>"
+    description: "Loses error type information, hampers matching"
+    fix: "Use thiserror for typed errors"
+  
+  - id: AP-RUST-005
+    name: "Lock Across Await"
+    description: "MutexGuard held across .await causes deadlocks"
+    fix: "Scope locks tightly, use tokio::sync::Mutex if needed"
+
+reference_implementations:
+  - name: "ripgrep"
+    url: "https://github.com/BurntSushi/ripgrep"
+    relevance: "Workspace organization, crate decomposition"
+  
+  - name: "Axum"
+    url: "https://github.com/tokio-rs/axum"
+    relevance: "Modern HTTP server patterns, Tower middleware"
+  
+  - name: "Tokio mini-redis"
+    url: "https://github.com/tokio-rs/mini-redis"
+    relevance: "Learning example for async patterns"
+
+mapping_to_viewpoints:
+  VP-F01:
+    check: "Identify Rust version, Cargo.toml structure, async runtime"
+  VP-F02:
+    check: "Detect single-crate vs workspace, module organization"
+  VP-S02:
+    check: "Validate hexagonal layer boundaries via imports"
+    severity_adjustment: "Domain imports from infrastructure = CRITICAL"
+  VP-S03:
+    check: "Map bounded contexts to crates or module trees"
+  VP-S06:
+    check: "Identify hotspots, consider compile-time impact"
+  VP-Q01:
+    check: "Review error handling patterns, unwrap usage"
+  VP-Q03:
+    check: "Verify trait-based testing, mock implementations"
+
+cargo_conventions:
+  workspace_features:
+    - "Use workspace-level dependency declarations for version consistency"
+    - "Reference with tokio.workspace = true in member crates"
+    - "Features should be additive only"
+    - "Use dep: prefix to hide internal optional dependencies"
+  
+  testing:
+    - "Test with --all-features and --no-default-features in CI"
+    - "Document all features in lib.rs or README"

@@ -1,0 +1,21 @@
+[package]
+name = "sarif-tools-server"
+version = "0.1.0"
+edition = "2021"
+description = "MCP Server for SARIF-based code analysis tools"
+authors = ["Light IT Global"]
+
+[dependencies]
+rmcp = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+schemars = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+which = { workspace = true }
+tempfile = { workspace = true }
+clap = { version = "4", features = ["derive"] }

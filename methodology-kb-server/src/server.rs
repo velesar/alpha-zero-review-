@@ -4,6 +4,7 @@
 //! methodology knowledge base for interpreting metrics, classifying findings,
 //! and checking compliance.
 
+use crate::acquisition::{DataAcquisition, DataSource};
 use crate::types::*;
 use anyhow::Result;
 use std::future::Future;
@@ -14,7 +15,7 @@ use rmcp::{
     tool_router,
     service::{RequestContext, RoleServer},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -23,8 +24,10 @@ use std::sync::Arc;
 /// Methodology KB MCP Server
 #[derive(Clone)]
 pub struct MethodologyKBServer {
+    #[allow(dead_code)]
     kb_path: PathBuf,
     kb: Arc<MethodologyKB>,
+    acquisition: Arc<DataAcquisition>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -97,6 +100,7 @@ pub struct GetTemplateInput {
     /// Template type (e.g., "executive_summary", "root_cause")
     pub template_type: String,
     /// Output format (markdown, html)
+    #[allow(dead_code)]
     #[serde(default = "default_format")]
     pub format: String,
 }
@@ -105,14 +109,42 @@ fn default_format() -> String {
     "markdown".to_string()
 }
 
+/// Input for get_metric_data tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetMetricDataInput {
+    /// Metric name to retrieve
+    pub metric: String,
+    /// Commit hash (default: HEAD)
+    #[serde(default = "default_commit")]
+    pub commit: String,
+}
+
+fn default_commit() -> String {
+    "HEAD".to_string()
+}
+
+/// Input for get_acquisition_status tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetAcquisitionStatusInput {
+    /// Commit hash (default: HEAD)
+    #[serde(default = "default_commit")]
+    pub commit: String,
+}
+
 #[tool_router]
 impl MethodologyKBServer {
     pub fn new(kb_path: PathBuf) -> Self {
         let kb = Self::load_kb(&kb_path).unwrap_or_default();
 
+        // Get project path from current directory or parent of kb_path
+        let project_path = std::env::current_dir().unwrap_or_else(|_| {
+            kb_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."))
+        });
+
         Self {
             kb_path,
             kb: Arc::new(kb),
+            acquisition: Arc::new(DataAcquisition::new(project_path)),
             tool_router: Self::tool_router(),
         }
     }
@@ -161,29 +193,25 @@ impl MethodologyKBServer {
         }
 
         // Load architecture standards
-        for entry in glob::glob(&kb_path.join("standards/*.yaml").to_string_lossy())? {
-            if let Ok(path) = entry {
-                let content = fs::read_to_string(&path)?;
-                let standard: ArchitectureStandard = serde_yaml::from_str(&content)?;
-                kb.standards.insert(standard.id.clone(), standard);
-            }
+        for path in glob::glob(&kb_path.join("standards/*.yaml").to_string_lossy())?.flatten() {
+            let content = fs::read_to_string(&path)?;
+            let standard: ArchitectureStandard = serde_yaml::from_str(&content)?;
+            kb.standards.insert(standard.id.clone(), standard);
         }
 
         // Load report templates
-        for entry in glob::glob(&kb_path.join("templates/reports/*.md").to_string_lossy())? {
-            if let Ok(path) = entry {
-                let content = fs::read_to_string(&path)?;
-                let id = path.file_stem()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                kb.templates.insert(id.clone(), ReportTemplate {
-                    id: id.clone(),
-                    name: id.replace('_', " "),
-                    format: "markdown".to_string(),
-                    content,
-                    sections: vec![],
-                });
-            }
+        for path in glob::glob(&kb_path.join("templates/reports/*.md").to_string_lossy())?.flatten() {
+            let content = fs::read_to_string(&path)?;
+            let id = path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            kb.templates.insert(id.clone(), ReportTemplate {
+                id: id.clone(),
+                name: id.replace('_', " "),
+                format: "markdown".to_string(),
+                content,
+                sections: vec![],
+            });
         }
 
         Ok(kb)
@@ -191,7 +219,7 @@ impl MethodologyKBServer {
 
     /// Look up a metric definition and thresholds
     #[tool(description = "Look up a metric definition including description, thresholds, and interpretation guidance.")]
-    async fn lookup_metric(&self, input: Parameters<LookupMetricInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn lookup_metric(&self, input: Parameters<LookupMetricInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let metric = self.kb.metrics.get(&input.metric).cloned();
 
@@ -217,7 +245,7 @@ impl MethodologyKBServer {
             }
 
             let json = serde_json::to_string_pretty(&metric).map_err(|e| {
-                rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+                rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
             })?;
 
             Ok(CallToolResult::success(vec![Content::text(json)]))
@@ -232,7 +260,7 @@ impl MethodologyKBServer {
 
     /// Classify a finding with context-aware severity adjustment
     #[tool(description = "Classify a finding and calculate adjusted severity based on context (bounded context type, layer, hotspot status).")]
-    async fn classify_finding(&self, input: Parameters<ClassifyFindingInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn classify_finding(&self, input: Parameters<ClassifyFindingInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let mut category = input.category.clone();
         let mut base_severity = input.base_severity.clone();
@@ -318,7 +346,7 @@ impl MethodologyKBServer {
         };
 
         let json = serde_json::to_string_pretty(&result).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
@@ -326,7 +354,7 @@ impl MethodologyKBServer {
 
     /// Get thresholds for a project type
     #[tool(description = "Get all metric thresholds for a specific project type and optionally language.")]
-    async fn get_thresholds(&self, input: Parameters<GetThresholdsInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_thresholds(&self, input: Parameters<GetThresholdsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let project_type = match input.project_type.to_lowercase().as_str() {
             "greenfield" => ProjectType::Greenfield,
@@ -364,7 +392,7 @@ impl MethodologyKBServer {
         }
 
         let json = serde_json::to_string_pretty(&result_thresholds).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
@@ -375,7 +403,7 @@ impl MethodologyKBServer {
 
     /// Check compliance against an architecture standard
     #[tool(description = "Check if a detected architecture pattern complies with a standard (clean_architecture, layered, hexagonal).")]
-    async fn check_compliance(&self, input: Parameters<CheckComplianceInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn check_compliance(&self, input: Parameters<CheckComplianceInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let standard = self.kb.standards.get(&input.standard);
 
@@ -444,7 +472,7 @@ impl MethodologyKBServer {
             };
 
             let json = serde_json::to_string_pretty(&result).map_err(|e| {
-                rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+                rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
             })?;
 
             Ok(CallToolResult::success(vec![Content::text(json)]))
@@ -459,7 +487,7 @@ impl MethodologyKBServer {
 
     /// Get a report template
     #[tool(description = "Get a report template for generating audit outputs (executive_summary, root_cause, technical_details).")]
-    async fn get_template(&self, input: Parameters<GetTemplateInput>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_template(&self, input: Parameters<GetTemplateInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let template = self.kb.templates.get(&input.template_type);
 
@@ -479,10 +507,10 @@ impl MethodologyKBServer {
 
     /// List available metrics
     #[tool(description = "List all available metrics in the knowledge base.")]
-    async fn list_metrics(&self) -> Result<CallToolResult, rmcp::Error> {
+    async fn list_metrics(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let metrics: Vec<&str> = self.kb.metrics.keys().map(|s| s.as_str()).collect();
         let json = serde_json::to_string_pretty(&metrics).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
@@ -490,12 +518,12 @@ impl MethodologyKBServer {
 
     /// List available standards
     #[tool(description = "List all available architecture standards.")]
-    async fn list_standards(&self) -> Result<CallToolResult, rmcp::Error> {
+    async fn list_standards(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let standards: Vec<(&String, &String)> = self.kb.standards.iter()
             .map(|(id, s)| (id, &s.name))
             .collect();
         let json = serde_json::to_string_pretty(&standards).map_err(|e| {
-            rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
@@ -503,13 +531,13 @@ impl MethodologyKBServer {
 
     /// Get category information
     #[tool(description = "Get detailed information about a finding category.")]
-    async fn get_category(&self, category: Parameters<String>) -> Result<CallToolResult, rmcp::Error> {
+    async fn get_category(&self, category: Parameters<String>) -> Result<CallToolResult, rmcp::ErrorData> {
         let category = category.0;
         let cat = self.kb.categories.get(&category);
 
         if let Some(cat) = cat {
             let json = serde_json::to_string_pretty(&cat).map_err(|e| {
-                rmcp::Error::internal_error(format!("Serialization error: {}", e), None)
+                rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
             })?;
             Ok(CallToolResult::success(vec![Content::text(json)]))
         } else {
@@ -519,6 +547,70 @@ impl MethodologyKBServer {
                 self.kb.categories.keys().cloned().collect::<Vec<_>>().join(", ")
             ))]))
         }
+    }
+
+    // =========== Data Acquisition Tools ===========
+
+    /// Get metric data with automatic cascade
+    #[tool(description = "Get metric data for a commit. Checks artifact cache first, returns data with provenance information. If data unavailable, indicates which tool to run.")]
+    async fn get_metric_data(&self, input: Parameters<GetMetricDataInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+
+        let data = self.acquisition.get_metric_data(&input.commit, &input.metric)
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Acquisition error: {}", e), None))?;
+
+        let json = serde_json::to_string_pretty(&data).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        let status = match data.source {
+            DataSource::Cache => "from cache",
+            DataSource::Fresh => "freshly acquired",
+            DataSource::Derived => "derived from other metrics",
+            DataSource::Unavailable => "unavailable - tool execution needed",
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Metric '{}' [{}]:\n\n{}",
+            input.metric, status, json
+        ))]))
+    }
+
+    /// Get acquisition status for a commit
+    #[tool(description = "Get the status of data acquisition for a commit. Shows which metrics are available, which are missing, and which tools need to be run.")]
+    async fn get_acquisition_status(&self, input: Parameters<GetAcquisitionStatusInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+
+        let status = self.acquisition.get_acquisition_status(&input.commit)
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Acquisition error: {}", e), None))?;
+
+        let json = serde_json::to_string_pretty(&status).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Acquisition status for commit {}:\n\nAvailable: {}\nMissing: {}\nTools needed: {}\n\n{}",
+            status.commit,
+            status.available_metrics.len(),
+            status.missing_metrics.len(),
+            status.tools_needed.join(", "),
+            json
+        ))]))
+    }
+
+    /// List acquirable metrics
+    #[tool(description = "List all metrics that can be acquired through tool execution and caching.")]
+    async fn list_acquirable_metrics(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        let metrics = self.acquisition.list_available_metrics();
+
+        let json = serde_json::to_string_pretty(&metrics).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Acquirable metrics ({}):\n\n{}",
+            metrics.len(), json
+        ))]))
     }
 }
 

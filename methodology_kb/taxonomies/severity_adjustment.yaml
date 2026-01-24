@@ -93,3 +93,174 @@
     category: architecture_circular
   multiplier: 1.2
   description: Circular dependencies indicate systemic issues
+
+# Path-based Adjustments (Beta-Zero)
+- condition:
+    type: path_pattern
+    pattern: "test/*"
+  multiplier: 0.5
+  description: Test code has lower production impact
+
+- condition:
+    type: path_pattern
+    pattern: "tests/*"
+  multiplier: 0.5
+  description: Test code has lower production impact
+
+- condition:
+    type: path_pattern
+    pattern: "*_test.py"
+  multiplier: 0.5
+  description: Test files have lower production impact
+
+- condition:
+    type: path_pattern
+    pattern: "*.test.ts"
+  multiplier: 0.5
+  description: Test files have lower production impact
+
+- condition:
+    type: path_pattern
+    pattern: "*.spec.ts"
+  multiplier: 0.5
+  description: Spec files have lower production impact
+
+- condition:
+    type: path_pattern
+    pattern: "__tests__/*"
+  multiplier: 0.5
+  description: Jest test directories have lower impact
+
+- condition:
+    type: path_pattern
+    pattern: "migrations/*"
+  multiplier: 0.3
+  description: Migration code is often auto-generated
+
+- condition:
+    type: path_pattern
+    pattern: "vendor/*"
+  multiplier: 0.2
+  description: Vendor code is third-party
+
+- condition:
+    type: path_pattern
+    pattern: "node_modules/*"
+  multiplier: 0.1
+  description: Node modules are external dependencies
+
+- condition:
+    type: path_pattern
+    pattern: ".venv/*"
+  multiplier: 0.1
+  description: Virtual environment code is external
+
+- condition:
+    type: path_pattern
+    pattern: "dist/*"
+  multiplier: 0.2
+  description: Distribution/build output
+
+- condition:
+    type: path_pattern
+    pattern: "build/*"
+  multiplier: 0.2
+  description: Build output
+
+- condition:
+    type: path_pattern
+    pattern: "docs/*"
+  multiplier: 0.3
+  description: Documentation has lower code impact
+
+- condition:
+    type: path_pattern
+    pattern: "examples/*"
+  multiplier: 0.4
+  description: Example code is not production
+
+- condition:
+    type: path_pattern
+    pattern: "scripts/*"
+  multiplier: 0.7
+  description: Scripts typically have limited scope
+
+- condition:
+    type: path_pattern
+    pattern: "fixtures/*"
+  multiplier: 0.3
+  description: Test fixtures are not production code
+
+# Business Context Adjustments (Beta-Zero)
+- condition:
+    type: business_context
+    context: payment
+  multiplier: 2.0
+  description: Payment code is critical - security issues are severe
+
+- condition:
+    type: business_context
+    context: auth
+  multiplier: 1.5
+  description: Authentication code is security-sensitive
+
+- condition:
+    type: business_context
+    context: admin
+  multiplier: 1.3
+  description: Admin code has elevated privileges
+
+- condition:
+    type: business_context
+    context: public_api
+  multiplier: 1.5
+  description: Public API has external attack surface
+
+- condition:
+    type: business_context
+    context: internal_api
+  multiplier: 1.0
+  description: Internal API - baseline severity
+
+- condition:
+    type: business_context
+    context: data_export
+  multiplier: 1.4
+  description: Data export may expose sensitive information
+
+- condition:
+    type: business_context
+    context: user_data
+  multiplier: 1.5
+  description: User data handling requires extra care
+
+- condition:
+    type: business_context
+    context: logging
+  multiplier: 0.8
+  description: Logging code has limited direct impact
+
+- condition:
+    type: business_context
+    context: monitoring
+  multiplier: 0.7
+  description: Monitoring code has limited direct impact
+
+# Reference Count Adjustments (for codegraph integration)
+- condition:
+    type: caller_count
+    min_callers: 10
+  multiplier: 1.5
+  description: Highly-referenced code affects many call sites
+
+- condition:
+    type: caller_count
+    min_callers: 20
+  multiplier: 1.8
+  description: Critical path code with many dependents
+
+- condition:
+    type: caller_count
+    min_callers: 50
+  multiplier: 2.0
+  description: Core infrastructure code - maximum impact

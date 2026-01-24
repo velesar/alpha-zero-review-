@@ -4,8 +4,7 @@
 //! which provides tools for interpreting metrics, classifying findings,
 //! and checking compliance against standards.
 
-mod server;
-mod types;
+use methodology_kb_server::server;
 
 use anyhow::Result;
 use clap::Parser;

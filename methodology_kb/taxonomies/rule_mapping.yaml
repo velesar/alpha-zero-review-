@@ -1,5 +1,6 @@
 # Rule Mapping
 # Maps tool-specific rule IDs to categories and base severity
+# Version: 2.0 (Beta-Zero enhanced with Ruff and Trivy support)
 
 # Semgrep Rules
 - tool: semgrep
@@ -400,3 +401,307 @@
   category: security
   base_severity: HIGH
   description: Open redirect
+
+# Ruff Rules (Python linter - fast, modern)
+- tool: ruff
+  rule_id: F401
+  category: maintainability
+  base_severity: LOW
+  description: Unused import
+
+- tool: ruff
+  rule_id: F841
+  category: maintainability
+  base_severity: LOW
+  description: Local variable assigned but never used
+
+- tool: ruff
+  rule_id: E501
+  category: style
+  base_severity: INFO
+  description: Line too long
+
+- tool: ruff
+  rule_id: E711
+  category: bugs
+  base_severity: LOW
+  description: Comparison to None
+
+- tool: ruff
+  rule_id: E712
+  category: bugs
+  base_severity: LOW
+  description: Comparison to True/False
+
+- tool: ruff
+  rule_id: W291
+  category: style
+  base_severity: INFO
+  description: Trailing whitespace
+
+- tool: ruff
+  rule_id: W292
+  category: style
+  base_severity: INFO
+  description: No newline at end of file
+
+- tool: ruff
+  rule_id: C901
+  category: maintainability_complexity
+  base_severity: MEDIUM
+  description: Function is too complex
+
+- tool: ruff
+  rule_id: S101
+  category: testability
+  base_severity: LOW
+  description: Use of assert detected
+
+- tool: ruff
+  rule_id: S105
+  category: security_auth
+  base_severity: HIGH
+  description: Hardcoded password string
+  cwe: CWE-259
+
+- tool: ruff
+  rule_id: S106
+  category: security_auth
+  base_severity: HIGH
+  description: Hardcoded password as argument
+  cwe: CWE-259
+
+- tool: ruff
+  rule_id: S107
+  category: security_auth
+  base_severity: HIGH
+  description: Hardcoded password as default
+  cwe: CWE-259
+
+- tool: ruff
+  rule_id: S108
+  category: security
+  base_severity: MEDIUM
+  description: Insecure temp file usage
+  cwe: CWE-377
+
+- tool: ruff
+  rule_id: S110
+  category: reliability_error
+  base_severity: LOW
+  description: Try-except-pass detected
+
+- tool: ruff
+  rule_id: S301
+  category: security
+  base_severity: HIGH
+  description: Pickle usage detected
+  cwe: CWE-502
+
+- tool: ruff
+  rule_id: S307
+  category: security_injection
+  base_severity: CRITICAL
+  description: Eval usage detected
+  cwe: CWE-95
+
+- tool: ruff
+  rule_id: S311
+  category: security_crypto
+  base_severity: MEDIUM
+  description: Pseudo-random number generator used
+  cwe: CWE-330
+
+- tool: ruff
+  rule_id: S324
+  category: security_crypto
+  base_severity: HIGH
+  description: Insecure hash function (MD5/SHA1)
+  cwe: CWE-327
+
+- tool: ruff
+  rule_id: S501
+  category: security
+  base_severity: HIGH
+  description: SSL certificate verification disabled
+  cwe: CWE-295
+
+- tool: ruff
+  rule_id: S506
+  category: security
+  base_severity: HIGH
+  description: Unsafe YAML load
+  cwe: CWE-502
+
+- tool: ruff
+  rule_id: S602
+  category: security_injection
+  base_severity: HIGH
+  description: Subprocess with shell=True
+  cwe: CWE-78
+
+- tool: ruff
+  rule_id: S603
+  category: security_injection
+  base_severity: MEDIUM
+  description: Subprocess without shell check
+  cwe: CWE-78
+
+- tool: ruff
+  rule_id: S608
+  category: security_injection
+  base_severity: HIGH
+  description: SQL injection via string formatting
+  cwe: CWE-89
+
+- tool: ruff
+  rule_id: S701
+  category: security_xss
+  base_severity: HIGH
+  description: Jinja2 autoescape disabled
+  cwe: CWE-79
+
+- tool: ruff
+  rule_id: PLR0911
+  category: maintainability_complexity
+  base_severity: MEDIUM
+  description: Too many return statements
+
+- tool: ruff
+  rule_id: PLR0912
+  category: maintainability_complexity
+  base_severity: MEDIUM
+  description: Too many branches
+
+- tool: ruff
+  rule_id: PLR0913
+  category: maintainability
+  base_severity: LOW
+  description: Too many arguments
+
+- tool: ruff
+  rule_id: PLR0915
+  category: maintainability_complexity
+  base_severity: MEDIUM
+  description: Too many statements
+
+# Trivy Rules (Vulnerability scanner)
+- tool: trivy
+  rule_id: CVE-*
+  category: security_vulnerability
+  base_severity: VARIES
+  description: Known CVE vulnerability (severity from CVE database)
+
+- tool: trivy
+  rule_id: GHSA-*
+  category: security_vulnerability
+  base_severity: VARIES
+  description: GitHub Security Advisory
+
+- tool: trivy
+  rule_id: DS001
+  category: security
+  base_severity: MEDIUM
+  description: Dockerfile - Running as root
+
+- tool: trivy
+  rule_id: DS002
+  category: security
+  base_severity: HIGH
+  description: Dockerfile - Image user is root
+
+- tool: trivy
+  rule_id: DS005
+  category: security
+  base_severity: HIGH
+  description: Dockerfile - ADD instead of COPY
+
+- tool: trivy
+  rule_id: DS012
+  category: security
+  base_severity: MEDIUM
+  description: Dockerfile - Maintainer deprecated
+
+- tool: trivy
+  rule_id: DS013
+  category: security
+  base_severity: MEDIUM
+  description: Dockerfile - apt-get without version pin
+
+- tool: trivy
+  rule_id: DS014
+  category: security
+  base_severity: MEDIUM
+  description: Dockerfile - pip install without version pin
+
+- tool: trivy
+  rule_id: DS017
+  category: security
+  base_severity: HIGH
+  description: Dockerfile - Update instruction alone
+
+- tool: trivy
+  rule_id: DS026
+  category: security
+  base_severity: MEDIUM
+  description: Dockerfile - No health check
+
+- tool: trivy
+  rule_id: KSV001
+  category: security
+  base_severity: MEDIUM
+  description: Kubernetes - Process can elevate privileges
+
+- tool: trivy
+  rule_id: KSV003
+  category: security
+  base_severity: HIGH
+  description: Kubernetes - Default capabilities not dropped
+
+- tool: trivy
+  rule_id: KSV011
+  category: security
+  base_severity: HIGH
+  description: Kubernetes - CPU limit not set
+
+- tool: trivy
+  rule_id: KSV012
+  category: security
+  base_severity: MEDIUM
+  description: Kubernetes - Runs as root
+
+- tool: trivy
+  rule_id: KSV014
+  category: security
+  base_severity: HIGH
+  description: Kubernetes - Root file system not read-only
+
+- tool: trivy
+  rule_id: KSV020
+  category: security
+  base_severity: MEDIUM
+  description: Kubernetes - Low user ID
+
+- tool: trivy
+  rule_id: KSV021
+  category: security
+  base_severity: MEDIUM
+  description: Kubernetes - Low group ID
+
+- tool: trivy
+  rule_id: AVD-AWS-0001
+  category: security
+  base_severity: HIGH
+  description: Terraform - S3 bucket encryption disabled
+
+- tool: trivy
+  rule_id: AVD-AWS-0086
+  category: security
+  base_severity: HIGH
+  description: Terraform - S3 bucket public access
+
+- tool: trivy
+  rule_id: AVD-AWS-0089
+  category: security
+  base_severity: MEDIUM
+  description: Terraform - CloudWatch log group not encrypted

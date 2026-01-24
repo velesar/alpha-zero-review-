@@ -1,18 +1,29 @@
 {
   "mcpServers": {
     "mental-model": {
-      "command": "/home/velesar/projects/alpha-zero-review-/target/release/mental-model-server",
+      "command": "./target/release/mental-model-server",
       "args": [
         "--model-path",
         "./mental_model.yaml"
       ]
     },
     "methodology-kb": {
-      "command": "/home/velesar/projects/alpha-zero-review-/target/release/methodology-kb-server",
+      "command": "./target/release/methodology-kb-server",
       "args": [
         "--kb-path",
-        "/home/velesar/projects/alpha-zero-review-/methodology_kb/"
+        "./methodology_kb/"
       ]
+    },
+    "sarif-tools": {
+      "command": "./target/release/sarif-tools-server",
+      "args": [
+        "--mappings-path",
+        "./methodology_kb/taxonomies/rule_mapping.yaml"
+      ]
+    },
+    "codegraph": {
+      "command": "./target/release/codegraph-server",
+      "args": []
     }
   }
 }

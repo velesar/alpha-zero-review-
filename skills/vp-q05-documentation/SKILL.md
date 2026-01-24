@@ -154,9 +154,40 @@ Compare:
 3. Configuration options vs documented options
 4. External dependencies vs documented setup
 
-### Step 6: Add Findings
+### Step 6: Add Findings (Batch Preferred)
 
-For documentation issues, call `mental-model/add_finding`:
+**For multiple findings (preferred - ADR-0005):**
+Call `mental-model/add_findings` with all documentation findings at once:
+
+```json
+{
+  "findings": [
+    {
+      "viewpoint": "VP-Q05",
+      "category": "documentation_api",
+      "title": "Undocumented API endpoint",
+      "description": "POST /api/orders endpoint lacks OpenAPI documentation",
+      "file_path": "src/api/orders.py",
+      "line_number": 45,
+      "base_severity": "LOW",
+      "recommendation": "Add FastAPI description and response schemas"
+    },
+    {
+      "viewpoint": "VP-Q05",
+      "category": "documentation_code",
+      "title": "Complex algorithm lacks explanation",
+      "description": "risk_calculation function (CC: 25) has no docstring",
+      "file_path": "src/services/risk_service.py",
+      "line_number": 89,
+      "base_severity": "LOW",
+      "recommendation": "Add docstring explaining algorithm and edge cases"
+    }
+  ]
+}
+```
+
+**For single finding:**
+Call `mental-model/add_finding`:
 
 ```json
 {
@@ -168,19 +199,6 @@ For documentation issues, call `mental-model/add_finding`:
   "line_number": 45,
   "base_severity": "LOW",
   "recommendation": "Add FastAPI description, parameter docs, and response schemas"
-}
-```
-
-```json
-{
-  "viewpoint": "VP-Q05",
-  "category": "documentation_code",
-  "title": "Complex algorithm lacks explanation",
-  "description": "risk_calculation function (CC: 25) has no docstring explaining the algorithm",
-  "file_path": "src/services/risk_service.py",
-  "line_number": 89,
-  "base_severity": "LOW",
-  "recommendation": "Add docstring explaining algorithm, parameters, and edge cases"
 }
 ```
 

@@ -1,0 +1,89 @@
+# Code Coverage Workflow
+# Generates coverage reports using cargo-tarpaulin and uploads to Codecov
+
+name: Code Coverage
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage:
+    name: Generate Coverage Report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-coverage-
+            ${{ runner.os }}-cargo-
+
+      - name: Install cargo-tarpaulin
+        run: |
+          cargo install cargo-tarpaulin --locked || cargo install cargo-tarpaulin
+
+      - name: Run coverage
+        run: |
+          cargo tarpaulin \
+            --all \
+            --out Xml \
+            --out Html \
+            --output-dir coverage \
+            --skip-clean \
+            --timeout 300 \
+            --ignore-tests \
+            --exclude-files "*/tests/*" "*/main.rs"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/cobertura.xml
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+      - name: Generate coverage summary
+        run: |
+          echo "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Coverage report generated successfully." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the HTML report from the Artifacts section." >> $GITHUB_STEP_SUMMARY
+
+          # Extract coverage percentage if available
+          if [ -f coverage/cobertura.xml ]; then
+            COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1)
+            if [ -n "$COVERAGE" ]; then
+              PERCENT=$(echo "$COVERAGE * 100" | bc -l | xargs printf "%.1f")
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "**Line Coverage:** ${PERCENT}%" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi

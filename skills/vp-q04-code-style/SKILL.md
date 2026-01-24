@@ -119,9 +119,40 @@ Call `methodology-kb/get_thresholds`:
 
 Compare metrics against thresholds.
 
-### Step 8: Add Findings
+### Step 8: Add Findings (Batch Preferred)
 
-For code style issues, call `mental-model/add_finding`:
+**For multiple findings (preferred - ADR-0005):**
+Call `mental-model/add_findings` with all code style findings at once:
+
+```json
+{
+  "findings": [
+    {
+      "viewpoint": "VP-Q04",
+      "category": "maintainability_complexity",
+      "title": "High cognitive complexity in order processing",
+      "description": "Function process_order has cognitive complexity of 35 (threshold: 15)",
+      "file_path": "src/services/order_service.py",
+      "line_number": 120,
+      "base_severity": "MEDIUM",
+      "recommendation": "Extract complex conditions into named methods"
+    },
+    {
+      "viewpoint": "VP-Q04",
+      "category": "maintainability_duplication",
+      "title": "Duplicated validation logic",
+      "description": "45 lines of duplicate code between validators",
+      "file_path": "src/validators/user_validator.py",
+      "line_number": 30,
+      "base_severity": "LOW",
+      "recommendation": "Extract common validation logic into shared module"
+    }
+  ]
+}
+```
+
+**For single finding:**
+Call `mental-model/add_finding`:
 
 ```json
 {
@@ -133,19 +164,6 @@ For code style issues, call `mental-model/add_finding`:
   "line_number": 120,
   "base_severity": "MEDIUM",
   "recommendation": "Extract complex conditions into named methods, reduce nesting depth"
-}
-```
-
-```json
-{
-  "viewpoint": "VP-Q04",
-  "category": "maintainability_duplication",
-  "title": "Duplicated validation logic",
-  "description": "45 lines of duplicate code between user_validator.py and order_validator.py",
-  "file_path": "src/validators/user_validator.py",
-  "line_number": 30,
-  "base_severity": "LOW",
-  "recommendation": "Extract common validation logic into shared module"
 }
 ```
 
