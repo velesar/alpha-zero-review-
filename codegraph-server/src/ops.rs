@@ -3,8 +3,8 @@
 //! This module contains pure functions extracted from MCP handlers
 //! to enable unit testing without rmcp infrastructure.
 
-use crate::graph::{Codegraph, Reference, Symbol, SymbolKind};
-use std::collections::{HashMap, HashSet};
+use crate::graph::{Codegraph, SymbolKind};
+use std::collections::HashSet;
 use std::path::Path;
 
 /// Impact analysis result

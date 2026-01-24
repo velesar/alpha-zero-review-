@@ -97,7 +97,7 @@ impl FindingsStore {
     /// Add a single finding
     pub fn add(&self, finding: &Finding) -> Result<()> {
         let context_json = finding.context.as_ref()
-            .map(|c| serde_json::to_string(c))
+            .map(serde_json::to_string)
             .transpose()?;
 
         self.conn.execute(
@@ -130,7 +130,7 @@ impl FindingsStore {
 
         for finding in findings {
             let context_json = finding.context.as_ref()
-                .map(|c| serde_json::to_string(c))
+                .map(serde_json::to_string)
                 .transpose()?;
 
             tx.execute(

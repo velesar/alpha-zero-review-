@@ -44,19 +44,16 @@ pub struct ThresholdValue {
 /// Project type for threshold selection
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ProjectType {
     Greenfield,
+    #[default]
     Mature,
     Legacy,
     Startup,
     Enterprise,
 }
 
-impl Default for ProjectType {
-    fn default() -> Self {
-        ProjectType::Mature
-    }
-}
 
 /// Threshold set for a specific project type and language
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]

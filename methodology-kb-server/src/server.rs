@@ -193,29 +193,25 @@ impl MethodologyKBServer {
         }
 
         // Load architecture standards
-        for entry in glob::glob(&kb_path.join("standards/*.yaml").to_string_lossy())? {
-            if let Ok(path) = entry {
-                let content = fs::read_to_string(&path)?;
-                let standard: ArchitectureStandard = serde_yaml::from_str(&content)?;
-                kb.standards.insert(standard.id.clone(), standard);
-            }
+        for path in glob::glob(&kb_path.join("standards/*.yaml").to_string_lossy())?.flatten() {
+            let content = fs::read_to_string(&path)?;
+            let standard: ArchitectureStandard = serde_yaml::from_str(&content)?;
+            kb.standards.insert(standard.id.clone(), standard);
         }
 
         // Load report templates
-        for entry in glob::glob(&kb_path.join("templates/reports/*.md").to_string_lossy())? {
-            if let Ok(path) = entry {
-                let content = fs::read_to_string(&path)?;
-                let id = path.file_stem()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                kb.templates.insert(id.clone(), ReportTemplate {
-                    id: id.clone(),
-                    name: id.replace('_', " "),
-                    format: "markdown".to_string(),
-                    content,
-                    sections: vec![],
-                });
-            }
+        for path in glob::glob(&kb_path.join("templates/reports/*.md").to_string_lossy())?.flatten() {
+            let content = fs::read_to_string(&path)?;
+            let id = path.file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            kb.templates.insert(id.clone(), ReportTemplate {
+                id: id.clone(),
+                name: id.replace('_', " "),
+                format: "markdown".to_string(),
+                content,
+                sections: vec![],
+            });
         }
 
         Ok(kb)

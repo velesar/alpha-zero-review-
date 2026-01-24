@@ -560,11 +560,10 @@ pub fn derive_constraints(model: &MentalModel) -> Constraints {
 
     // Hotspots → high priority
     for hotspot in &model.hotspots.files {
-        if matches!(hotspot.risk, Risk::Critical | Risk::High) {
-            if !high_priority.contains(&hotspot.path) {
+        if matches!(hotspot.risk, Risk::Critical | Risk::High)
+            && !high_priority.contains(&hotspot.path) {
                 high_priority.push(hotspot.path.clone());
             }
-        }
     }
 
     // Domain layer → security focus

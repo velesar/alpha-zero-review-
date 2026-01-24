@@ -179,7 +179,7 @@ impl DataAcquisition {
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
             let artifacts = meta_yaml.get("artifacts").and_then(|a| a.as_mapping());
-            let artifact_info = artifacts.and_then(|a| a.get(&serde_yaml::Value::String(artifact_type.to_string())));
+            let artifact_info = artifacts.and_then(|a| a.get(serde_yaml::Value::String(artifact_type.to_string())));
 
             ArtifactMeta {
                 produced_at: artifact_info

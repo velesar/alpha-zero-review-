@@ -26,9 +26,54 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 |----------|-------|-------|
 | Modularity | **Excellent** | Clean separation into 4 independent crates |
 | Consistency | **Excellent** | Uniform patterns across all servers |
-| Testability | **Good** | 63 integration tests, room for more coverage |
+| Testability | **Good** | 128 tests, room for more coverage |
 | Documentation | **Good** | CLAUDE.md comprehensive, inline docs present |
 | Dependencies | **Good** | Modern, well-maintained dependencies |
+
+---
+
+## Metrics Dashboard
+
+### Codebase Metrics
+
+| Metric | Value |
+|--------|-------|
+| **Total Lines of Code** | 10,691 |
+| **Rust Files** | 36 |
+| **Test Files** | 4 |
+| **Documentation Files** | 15 |
+
+### Per-Crate Breakdown
+
+| Crate | LOC | Modules | MCP Tools | Tests |
+|-------|-----|---------|-----------|-------|
+| mental-model-server | 3,424 | 8 | 22 | 45 |
+| methodology-kb-server | 2,127 | 8 | 11 | 37 |
+| sarif-tools-server | 2,739 | 12 | 3 | 62 |
+| codegraph-server | 1,207 | 6 | 10 | 30 |
+| **Total** | **9,497** | **34** | **46** | **174** |
+
+### Quality Metrics
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| Clippy warnings (standard) | 2 | 0 |
+| Clippy warnings (pedantic) | ~30 | - |
+| Unsafe blocks | 0 | 0 |
+| TODO comments | 0 | 0 |
+| Circular dependencies | 0 | 0 |
+
+### ADR Implementation Status
+
+| ADR | Title | Status | Impact |
+|-----|-------|--------|--------|
+| 0001 | Rust Language | ✅ Implemented | Foundation |
+| 0002 | MCP Protocol | ✅ Implemented | Foundation |
+| 0003 | Workspace Architecture | ✅ Implemented | Foundation |
+| 0004 | SARIF Output | ✅ Implemented | Integration |
+| 0005 | Batch Operations | ✅ Implemented | 5-10x fewer MCP calls |
+| 0006 | Deferred Persistence | ✅ Implemented | 90% fewer disk writes |
+| 0007 | SQLite Findings Store | ✅ Implemented | O(log n) queries |
 
 ---
 
