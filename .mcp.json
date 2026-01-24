@@ -1,29 +1,28 @@
 {
   "mcpServers": {
+    "codegraph": {
+      "args": [],
+      "command": "/home/velesar/projects/alpha-zero-review-/target/release/codegraph-server"
+    },
     "mental-model": {
-      "command": "./target/release/mental-model-server",
       "args": [
         "--model-path",
-        "./mental_model.yaml"
-      ]
+        "/home/velesar/projects/alpha-zero-review-/.audit/mental_model.yaml",
+        "--audit-path",
+        "/home/velesar/projects/alpha-zero-review-/.audit"
+      ],
+      "command": "/home/velesar/projects/alpha-zero-review-/target/release/mental-model-server"
     },
     "methodology-kb": {
-      "command": "./target/release/methodology-kb-server",
       "args": [
         "--kb-path",
-        "./methodology_kb/"
-      ]
+        "/home/velesar/projects/alpha-zero-review-/methodology_kb/"
+      ],
+      "command": "/home/velesar/projects/alpha-zero-review-/target/release/methodology-kb-server"
     },
     "sarif-tools": {
-      "command": "./target/release/sarif-tools-server",
-      "args": [
-        "--mappings-path",
-        "./methodology_kb/taxonomies/rule_mapping.yaml"
-      ]
-    },
-    "codegraph": {
-      "command": "./target/release/codegraph-server",
-      "args": []
+      "args": [],
+      "command": "/home/velesar/projects/alpha-zero-review-/target/release/sarif-tools-server"
     }
   }
 }
