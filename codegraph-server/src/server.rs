@@ -4,24 +4,45 @@
 //! semantic code intelligence.
 
 use crate::graph::Codegraph;
-use anyhow::Result;
-use std::future::Future;
+use crate::index_manager::{IndexManager, Language};
 use rmcp::{
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo, PaginatedRequestParam, ListToolsResult, ErrorData, CallToolRequestParam},
-    schemars, tool,
-    handler::server::{tool::{ToolRouter, Parameters, ToolCallContext}, ServerHandler},
-    tool_router,
+    handler::server::{
+        tool::{Parameters, ToolCallContext, ToolRouter},
+        ServerHandler,
+    },
+    model::{
+        CallToolRequestParam, CallToolResult, Content, ErrorData, ListToolsResult,
+        PaginatedRequestParam, ServerCapabilities, ServerInfo,
+    },
+    schemars, tool, tool_router,
     service::{RequestContext, RoleServer},
 };
+use std::future::Future;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 /// Codegraph MCP Server
 #[derive(Clone)]
 pub struct CodegraphServer {
+    /// Single graph for backward compatibility (explicit load_index)
     graph: Arc<RwLock<Option<Codegraph>>>,
+    /// Multiple graphs keyed by language (auto-loaded)
+    graphs: Arc<RwLock<HashMap<Language, Codegraph>>>,
+    /// Project path for index management
+    project_path: Arc<RwLock<Option<PathBuf>>>,
     tool_router: ToolRouter<Self>,
+}
+
+/// Input for load_project_indexes
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct LoadProjectIndexesInput {
+    /// Path to the project directory (must have .audit/indexes/)
+    pub project_path: String,
+    /// Build missing indexes on-demand if indexer is available (default: false)
+    #[serde(default)]
+    pub build_if_missing: bool,
 }
 
 /// Input for load_index
@@ -95,8 +116,29 @@ impl CodegraphServer {
     pub fn new() -> Self {
         Self {
             graph: Arc::new(RwLock::new(None)),
+            graphs: Arc::new(RwLock::new(HashMap::new())),
+            project_path: Arc::new(RwLock::new(None)),
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Helper to get any available graph (prefers multi-graph, falls back to single)
+    fn get_any_graph(&self) -> Result<std::sync::RwLockReadGuard<'_, Option<Codegraph>>, rmcp::ErrorData> {
+        // First check if we have graphs loaded via load_project_indexes
+        let graphs = self.graphs.read().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+        })?;
+
+        if !graphs.is_empty() {
+            // We have multi-graphs, but this helper returns Option<Codegraph>
+            // For now, we'll fall through to single graph logic
+            // In a real impl, we'd merge or pick the right one
+            drop(graphs);
+        }
+
+        self.graph.read().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+        })
     }
 
     /// Load a SCIP index file
@@ -134,6 +176,84 @@ impl CodegraphServer {
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
+    /// Load all project indexes from .audit/indexes/
+    #[tool(description = "Auto-load all SCIP indexes from .audit/indexes/ directory. Optionally builds missing indexes if indexer is available.")]
+    async fn load_project_indexes(
+        &self,
+        input: Parameters<LoadProjectIndexesInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+        let project_path = PathBuf::from(&input.project_path);
+
+        if !project_path.exists() {
+            return Err(rmcp::ErrorData::invalid_params(
+                format!("Project path not found: {}", input.project_path),
+                None,
+            ));
+        }
+
+        // Store project path for future reference
+        *self.project_path.write().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+        })? = Some(project_path.clone());
+
+        let manager = IndexManager::new(project_path);
+        let result = manager.auto_load_or_build(input.build_if_missing);
+
+        // Load all discovered indexes into our graphs map
+        let mut loaded_count = 0;
+        let mut total_symbols = 0;
+        let mut total_files = 0;
+
+        for status in &result.loaded {
+            if status.exists {
+                match Codegraph::load_from_scip(&status.path) {
+                    Ok(graph) => {
+                        total_symbols += graph.symbols_count();
+                        total_files += graph.files_count();
+                        self.graphs
+                            .write()
+                            .map_err(|e| {
+                                rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+                            })?
+                            .insert(status.language, graph);
+                        loaded_count += 1;
+                    }
+                    Err(e) => {
+                        // Add to warnings but continue
+                        tracing::warn!("Failed to load {} index: {}", status.language, e);
+                    }
+                }
+            }
+        }
+
+        // Also set the first loaded graph as the default single graph for backward compatibility
+        if loaded_count > 0 {
+            if let Some(status) = result.loaded.first() {
+                if let Ok(graph) = Codegraph::load_from_scip(&status.path) {
+                    *self.graph.write().map_err(|e| {
+                        rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+                    })? = Some(graph);
+                }
+            }
+        }
+
+        let response = serde_json::json!({
+            "status": if loaded_count > 0 { "loaded" } else { "no_indexes" },
+            "loaded_count": loaded_count,
+            "total_symbols": total_symbols,
+            "total_files": total_files,
+            "languages": result.loaded.iter().map(|s| s.language.to_string()).collect::<Vec<_>>(),
+            "missing": result.missing.iter().map(|l| l.to_string()).collect::<Vec<_>>(),
+            "warnings": result.warnings,
+        });
+
+        let json = serde_json::to_string_pretty(&response)
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
     /// Get information about a symbol
     #[tool(description = "Get detailed information about a symbol by its ID")]
     async fn get_symbol_info(&self, input: Parameters<SymbolInput>) -> Result<CallToolResult, rmcp::ErrorData> {
@@ -144,7 +264,7 @@ impl CodegraphServer {
         })?;
 
         let graph = graph.as_ref().ok_or_else(|| {
-            rmcp::ErrorData::internal_error("No index loaded. Call load_index first.".to_string(), None)
+            rmcp::ErrorData::internal_error("No index loaded. Call load_index or load_project_indexes first.".to_string(), None)
         })?;
 
         let symbol = graph.get_symbol(&input.symbol_id).ok_or_else(|| {

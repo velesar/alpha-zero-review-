@@ -1,8 +1,11 @@
 //! Setup CLI for AI Code Audit Agent
 //!
 //! Configures MCP servers for different AI CLI tools (Claude, Codex, Cline).
+//! Optionally builds SCIP indexes for code intelligence.
 
 mod config;
+mod indexer;
+mod language;
 mod templates;
 
 use anyhow::{bail, Context, Result};
@@ -28,13 +31,15 @@ impl std::fmt::Display for CliTool {
 
 #[derive(Parser, Debug)]
 #[command(name = "setup-audit")]
-#[command(version = "1.0")]
+#[command(version = "2.0")]
 #[command(about = "Setup AI Code Audit Agent for a target project")]
 #[command(long_about = "Configures MCP servers and instructions for Claude CLI, Codex CLI, or Cline.\n\n\
     Examples:\n  \
-    setup-audit /path/to/project              # Default (Claude)\n  \
-    setup-audit /path/to/project --cli codex  # Codex CLI\n  \
-    setup-audit /path/to/project --all        # All tools")]
+    setup-audit /path/to/project                    # Default (Claude)\n  \
+    setup-audit /path/to/project --cli codex        # Codex CLI\n  \
+    setup-audit /path/to/project --all              # All tools\n  \
+    setup-audit /path/to/project --with-index       # Build SCIP indexes\n  \
+    setup-audit /path/to/project --install-indexers # Install missing indexers")]
 struct Args {
     /// Target project directory (default: current directory)
     #[arg(default_value = ".")]
@@ -55,13 +60,23 @@ struct Args {
     /// Skip checking for built MCP servers
     #[arg(long)]
     skip_check: bool,
+
+    /// Build SCIP indexes for detected languages
+    #[arg(long)]
+    with_index: bool,
+
+    /// Install missing language indexers automatically
+    #[arg(long, requires = "with_index")]
+    install_indexers: bool,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
     // Resolve paths
-    let target_dir = args.target.canonicalize()
+    let target_dir = args
+        .target
+        .canonicalize()
         .context("Target directory does not exist")?;
 
     if !target_dir.is_dir() {
@@ -72,7 +87,7 @@ fn main() -> Result<()> {
     let agent_dir = find_agent_dir()?;
 
     println!("╔════════════════════════════════════════════════════════════════╗");
-    println!("║           AI Code Audit Agent - Setup CLI v1.0                 ║");
+    println!("║           AI Code Audit Agent - Setup CLI v2.0                 ║");
     println!("╠════════════════════════════════════════════════════════════════╣");
     println!("║ Agent Directory: {}", agent_dir.display());
     println!("║ Target Project:  {}", target_dir.display());
@@ -80,6 +95,14 @@ fn main() -> Result<()> {
         println!("║ CLI Tools:       ALL (claude, codex, cline)");
     } else {
         println!("║ CLI Tool:        {}", args.cli);
+    }
+    if args.with_index {
+        print!("║ SCIP Indexing:   Enabled");
+        if args.install_indexers {
+            println!(" (auto-install)");
+        } else {
+            println!();
+        }
     }
     println!("╚════════════════════════════════════════════════════════════════╝");
     println!();
@@ -111,11 +134,18 @@ fn main() -> Result<()> {
     // Create shared viewpoints reference
     config::create_viewpoints_reference(&agent_dir, &target_dir)?;
 
+    // Build SCIP indexes if requested
+    let built_indexes = if args.with_index {
+        build_indexes(&target_dir, args.install_indexers)?
+    } else {
+        vec![]
+    };
+
     // Update .gitignore
     config::update_gitignore(&target_dir)?;
 
     // Print completion message
-    print_completion(&target_dir, &tools);
+    print_completion(&target_dir, &tools, &built_indexes);
 
     Ok(())
 }
@@ -183,7 +213,64 @@ fn check_servers(agent_dir: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn print_completion(target_dir: &PathBuf, tools: &[CliTool]) {
+fn build_indexes(
+    target_dir: &PathBuf,
+    install_missing: bool,
+) -> Result<Vec<(language::Language, PathBuf)>> {
+    println!("Detecting project languages...");
+
+    let languages = language::detect_languages(target_dir);
+
+    if languages.is_empty() {
+        println!("  No supported languages detected.");
+        println!("  Supported: Rust, TypeScript, JavaScript, Python, Go, Java");
+        return Ok(vec![]);
+    }
+
+    println!(
+        "  Found: {}",
+        languages
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    println!();
+
+    // Check indexer availability
+    println!("Checking indexer availability...");
+    let statuses = indexer::check_indexers(&languages);
+
+    for status in &statuses {
+        if status.installed {
+            let version = status.version.as_deref().unwrap_or("unknown version");
+            println!("  ✓ {} ({})", status.language, version);
+        } else {
+            println!("  ✗ {} ({} not found)", status.language, status.command);
+        }
+    }
+    println!();
+
+    // Build indexes
+    println!("Building SCIP indexes...");
+    let index_dir = target_dir.join(".audit/indexes");
+
+    let results = indexer::build_all_indexes(&languages, target_dir, &index_dir, install_missing)?;
+
+    if results.is_empty() {
+        println!("  No indexes were built.");
+        println!("  Use --install-indexers to install missing indexers automatically.");
+    }
+
+    println!();
+    Ok(results)
+}
+
+fn print_completion(
+    target_dir: &PathBuf,
+    tools: &[CliTool],
+    indexes: &[(language::Language, PathBuf)],
+) {
     println!();
     println!("╔════════════════════════════════════════════════════════════════╗");
     println!("║                      Setup Complete!                           ║");
@@ -207,6 +294,15 @@ fn print_completion(target_dir: &PathBuf, tools: &[CliTool]) {
 
     println!("║    • .audit/                    (Artifact storage)             ║");
     println!("║    • .audit-viewpoints.md       (Viewpoint reference)          ║");
+
+    if !indexes.is_empty() {
+        println!("║                                                                ║");
+        println!("║  SCIP indexes:                                                 ║");
+        for (lang, _path) in indexes {
+            println!("║    • .audit/indexes/{:<12}                            ║", lang.index_filename());
+        }
+    }
+
     println!("║                                                                ║");
     println!("║  To start the audit:                                           ║");
     println!("║                                                                ║");
