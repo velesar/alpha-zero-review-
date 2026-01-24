@@ -2,6 +2,8 @@
 //!
 //! Provides data structures for semantic code analysis using SCIP indices.
 
+use crate::scip;
+use prost::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -118,24 +120,162 @@ impl Codegraph {
 
     /// Parse SCIP index data
     fn parse_scip_index(data: &[u8]) -> Result<Self, std::io::Error> {
-        // For now, create an empty graph if we can't parse
-        // Full implementation would use prost-generated types
         if data.is_empty() {
             return Ok(Self::new());
         }
 
-        // Try to detect if it's a valid SCIP file (protobuf wire format)
-        // SCIP files start with protobuf encoding
-        if data.len() < 10 {
-            return Err(std::io::Error::new(
+        // Parse the protobuf-encoded SCIP index
+        let index = scip::Index::decode(data).map_err(|e| {
+            std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "File too small to be a valid SCIP index",
-            ));
+                format!("Failed to parse SCIP index: {}", e),
+            )
+        })?;
+
+        let mut graph = Self::new();
+
+        // Process each document in the index
+        for doc in &index.documents {
+            let file_path = doc.relative_path.clone();
+
+            // Process symbol definitions in this document
+            for sym_info in &doc.symbols {
+                let symbol_id = sym_info.symbol.clone();
+                if symbol_id.is_empty() {
+                    continue;
+                }
+
+                // Extract symbol name from the SCIP symbol string
+                let name = Self::extract_symbol_name(&symbol_id);
+                let kind = Self::scip_kind_to_symbol_kind(sym_info.kind);
+
+                // Get documentation from the symbol info
+                let documentation = sym_info.documentation.first().cloned();
+
+                let symbol = Symbol {
+                    id: symbol_id.clone(),
+                    kind: kind.clone(),
+                    name,
+                    file: file_path.clone(),
+                    range: Range::default(), // Will be updated from occurrences
+                    documentation,
+                };
+
+                graph.symbols.insert(symbol_id.clone(), symbol);
+                graph
+                    .file_symbols
+                    .entry(file_path.clone())
+                    .or_default()
+                    .push(symbol_id);
+            }
+
+            // Process occurrences (references and definitions)
+            for occ in &doc.occurrences {
+                let symbol_id = occ.symbol.clone();
+                if symbol_id.is_empty() {
+                    continue;
+                }
+
+                // Parse SCIP range format: [startLine, startChar, endLine, endChar] or [startLine, startChar, endChar]
+                let (line, _col) = if occ.range.len() >= 2 {
+                    (occ.range[0] as u32, occ.range[1] as u32)
+                } else {
+                    (0, 0)
+                };
+
+                // Determine if this is a definition or reference based on symbol_roles
+                let is_definition = occ.symbol_roles & (scip::SymbolRole::Definition as i32) != 0;
+
+                let reference = Reference {
+                    symbol_id: symbol_id.clone(),
+                    file: file_path.clone(),
+                    line,
+                    role: if is_definition {
+                        ReferenceRole::Definition
+                    } else {
+                        ReferenceRole::Reference
+                    },
+                };
+
+                if is_definition {
+                    graph
+                        .definitions
+                        .entry(symbol_id)
+                        .or_default()
+                        .push(reference);
+                } else {
+                    graph
+                        .references
+                        .entry(symbol_id)
+                        .or_default()
+                        .push(reference);
+                }
+            }
         }
 
-        // Create empty graph - actual parsing would go here with prost
-        tracing::warn!("SCIP parsing not fully implemented - returning empty graph");
-        Ok(Self::new())
+        // Also process external symbols (symbols defined in other packages)
+        for sym_info in &index.external_symbols {
+            let symbol_id = sym_info.symbol.clone();
+            if symbol_id.is_empty() || graph.symbols.contains_key(&symbol_id) {
+                continue;
+            }
+
+            let name = Self::extract_symbol_name(&symbol_id);
+            let kind = Self::scip_kind_to_symbol_kind(sym_info.kind);
+            let documentation = sym_info.documentation.first().cloned();
+
+            let symbol = Symbol {
+                id: symbol_id.clone(),
+                kind,
+                name,
+                file: String::new(), // External symbol, no file
+                range: Range::default(),
+                documentation,
+            };
+
+            graph.symbols.insert(symbol_id, symbol);
+        }
+
+        tracing::info!(
+            "Loaded SCIP index: {} symbols, {} files",
+            graph.symbols.len(),
+            graph.file_symbols.len()
+        );
+
+        Ok(graph)
+    }
+
+    /// Extract a readable name from a SCIP symbol string
+    fn extract_symbol_name(symbol_id: &str) -> String {
+        // SCIP symbol format: "scheme package descriptor"
+        // Example: "scip-typescript npm @types/node 18.0.0 path/`join`()."
+        // We want to extract the last meaningful part
+
+        symbol_id
+            .split('/')
+            .last()
+            .and_then(|s| s.split('`').nth(1))
+            .or_else(|| symbol_id.split('/').last())
+            .unwrap_or(symbol_id)
+            .trim_end_matches(|c| c == '(' || c == ')' || c == '.' || c == '#')
+            .to_string()
+    }
+
+    /// Convert SCIP SymbolKind to our SymbolKind
+    fn scip_kind_to_symbol_kind(kind: i32) -> SymbolKind {
+        use scip::symbol_information::Kind;
+        match Kind::try_from(kind) {
+            Ok(Kind::Class) | Ok(Kind::Object) => SymbolKind::Class,
+            Ok(Kind::Function) => SymbolKind::Function,
+            Ok(Kind::Method) | Ok(Kind::Constructor) => SymbolKind::Method,
+            Ok(Kind::Variable) | Ok(Kind::Parameter) => SymbolKind::Variable,
+            Ok(Kind::Constant) => SymbolKind::Constant,
+            Ok(Kind::Module) | Ok(Kind::Namespace) | Ok(Kind::Package) => SymbolKind::Module,
+            Ok(Kind::Interface) | Ok(Kind::Trait) => SymbolKind::Interface,
+            Ok(Kind::Type) | Ok(Kind::TypeAlias) | Ok(Kind::TypeParameter) => SymbolKind::Type,
+            Ok(Kind::Property) | Ok(Kind::Field) => SymbolKind::Property,
+            _ => SymbolKind::Unknown,
+        }
     }
 
     /// Load from a JSON representation (for testing/alternative format)
