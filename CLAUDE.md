@@ -180,6 +180,7 @@ Read skills/vp-f01-tech-stack/SKILL.md and follow its instructions
 
 ### codegraph server
 - `load_index(scip_path)` - Load SCIP index or JSON codegraph
+- `load_project_indexes(project_path, build_if_missing?)` - Auto-load all indexes from `.audit/indexes/`, optionally build missing 🆕
 - `find_symbol(pattern)` - Search symbols by name pattern
 - `get_symbol_info(symbol_id)` - Get detailed symbol information
 - `get_callers(symbol_id)` - Get all references to a symbol
@@ -188,6 +189,8 @@ Read skills/vp-f01-tech-stack/SKILL.md and follow its instructions
 - `get_file_symbols(file_path)` - Get all symbols defined in a file
 - `get_module_deps(module_path)` - Get module dependencies
 - `find_hotspot_symbols(min_callers, path_filter?)` - Find heavily-referenced symbols
+
+*🆕 ADR-0008: Auto-loads from `.audit/indexes/`, checks commit freshness, builds on-demand*
 
 ## Output Deliverables
 

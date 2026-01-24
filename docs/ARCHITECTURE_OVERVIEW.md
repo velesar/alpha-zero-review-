@@ -14,10 +14,10 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 
 | Metric | Value |
 |--------|-------|
-| Total Lines of Code | 11,360 |
+| Total Lines of Code | 12,411 |
 | Number of Crates | 5 |
-| MCP Tools | 46 |
-| Total Tests | 128 |
+| MCP Tools | 47 |
+| Total Tests | 174 |
 | Primary Language | Rust 2021 |
 
 ### Architecture Health Score
@@ -38,8 +38,8 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 
 | Metric | Value |
 |--------|-------|
-| **Total Lines of Code** | 11,360 |
-| **Rust Files** | 39 |
+| **Total Lines of Code** | 12,411 |
+| **Rust Files** | 42 |
 | **Test Files** | 4 |
 | **Documentation Files** | 15 |
 
@@ -50,9 +50,9 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 | mental-model-server | 3,424 | 8 | 22 | 45 |
 | methodology-kb-server | 2,127 | 8 | 11 | 37 |
 | sarif-tools-server | 2,739 | 12 | 3 | 62 |
-| codegraph-server | 1,207 | 6 | 10 | 30 |
-| setup-cli | 669 | 3 | - | - |
-| **Total** | **10,166** | **37** | **46** | **174** |
+| codegraph-server | 1,678 | 7 | 11 | 32 |
+| setup-cli | 1,249 | 5 | - | 6 |
+| **Total** | **11,217** | **40** | **47** | **182** |
 
 ### Quality Metrics
 
@@ -75,6 +75,7 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 | 0005 | Batch Operations | ✅ Implemented | 5-10x fewer MCP calls |
 | 0006 | Deferred Persistence | ✅ Implemented | 90% fewer disk writes |
 | 0007 | SQLite Findings Store | ✅ Implemented | O(log n) queries |
+| 0008 | SCIP Index Management | ✅ Implemented | Auto-load, on-demand build |
 
 ---
 
@@ -664,19 +665,20 @@ sarif-tools-server/src/
 
 ---
 
-### codegraph-server (1,207 LOC)
+### codegraph-server (1,678 LOC)
 
-SCIP-based semantic code intelligence.
+SCIP-based semantic code intelligence with auto-loading and on-demand indexing.
 
 ```
 codegraph-server/src/
-├── server.rs      (400 LOC) ─── MCP handlers, 10 tools
-├── graph.rs       (383 LOC) ─── Symbol graph (10 types)
-├── ops.rs         (175 LOC) ─── Impact analysis, hotspots
-├── error.rs       (103 LOC) ─── 3 error enums
-├── utils.rs        (78 LOC) ─── Formatting helpers
-├── main.rs         (58 LOC) ─── CLI entry point
-└── lib.rs          (10 LOC) ─── Public exports
+├── server.rs        (520 LOC) ─── MCP handlers, 11 tools
+├── graph.rs         (383 LOC) ─── Symbol graph (10 types)
+├── index_manager.rs (350 LOC) ─── Auto-load, freshness check, on-demand build
+├── ops.rs           (175 LOC) ─── Impact analysis, hotspots
+├── error.rs         (103 LOC) ─── 3 error enums
+├── utils.rs          (78 LOC) ─── Formatting helpers
+├── main.rs           (58 LOC) ─── CLI entry point
+└── lib.rs            (11 LOC) ─── Public exports
 ```
 
 **Key Types:**
@@ -684,41 +686,64 @@ codegraph-server/src/
 - `Symbol` - Named entity with kind, location, docs
 - `Reference` - Symbol usage with role (definition, call, import)
 - `Impact` - Change impact analysis result
+- `IndexManager` - Auto-load indexes, freshness checking, on-demand builds
+- `Language` - Supported languages with indexer configuration
+
+**New Tool (ADR-0008):**
+- `load_project_indexes(project_path, build_if_missing?)` - Auto-discovers and loads all indexes from `.audit/indexes/`, optionally builds missing ones
 
 **Responsibilities:**
 1. SCIP index loading and parsing
-2. Symbol search and lookup
-3. Caller/callee relationship tracking
-4. Change impact analysis
-5. Hotspot symbol detection
+2. Auto-load indexes from `.audit/indexes/`
+3. Commit-hash freshness checking
+4. On-demand index building
+5. Symbol search and lookup
+6. Caller/callee relationship tracking
+7. Change impact analysis
+8. Hotspot symbol detection
 
 ---
 
-### setup-cli (669 LOC)
+### setup-cli (1,249 LOC)
 
 Setup CLI for configuring audit environments across different AI CLI tools.
 
 ```
 setup-cli/src/
-├── main.rs      (180 LOC) ─── CLI entry point, clap argument parsing
-├── config.rs    (160 LOC) ─── Configuration generation for each tool
-└── templates.rs (329 LOC) ─── Embedded JSON/markdown templates
+├── main.rs      (333 LOC) ─── CLI entry point, clap argument parsing
+├── config.rs    (166 LOC) ─── Configuration generation for each tool
+├── templates.rs (266 LOC) ─── Embedded JSON/markdown templates
+├── language.rs  (188 LOC) ─── Language detection for SCIP indexing
+└── indexer.rs   (296 LOC) ─── Indexer availability, install, build
 ```
 
 **Key Features:**
 - Multi-CLI support: Claude CLI, Codex CLI, Cline VS Code extension
+- SCIP index management: detect languages, build indexes, check freshness
 - Type-safe path validation
 - Embedded templates (no external files needed)
 - Copies existing CLAUDE.md from agent directory
 
 **CLI Interface:**
 ```bash
-setup-audit /path/to/project --cli claude  # default
-setup-audit /path/to/project --cli codex
-setup-audit /path/to/project --cli cline
-setup-audit /path/to/project --all         # all tools
-setup-audit /path/to/project --clean       # remove existing configs
+setup-audit /path/to/project --cli claude       # default
+setup-audit /path/to/project --cli codex        # Codex CLI
+setup-audit /path/to/project --cli cline        # Cline
+setup-audit /path/to/project --all              # all tools
+setup-audit /path/to/project --with-index       # build SCIP indexes
+setup-audit /path/to/project --install-indexers # auto-install indexers
+setup-audit /path/to/project --clean            # remove existing configs
 ```
+
+**Supported Languages for SCIP Indexing:**
+
+| Language | Detection | Indexer | Install Command |
+|----------|-----------|---------|-----------------|
+| Rust | `Cargo.toml` | rust-analyzer | `rustup component add rust-analyzer` |
+| TypeScript | `package.json` + `.ts` | scip-typescript | `npm i -g @sourcegraph/scip-typescript` |
+| Python | `pyproject.toml` | scip-python | `pip install scip-python` |
+| Go | `go.mod` | scip-go | `go install github.com/sourcegraph/scip-go@latest` |
+| Java | `pom.xml` | scip-java | `coursier install scip-java` |
 
 **Generated Files by Tool:**
 

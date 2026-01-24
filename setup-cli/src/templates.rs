@@ -130,8 +130,8 @@ Metrics and classification: lookup_metric, classify_finding, get_thresholds, che
 ### sarif-tools (3 tools)
 Code analysis: list_available_tools, merge_sarif, get_tool_config
 
-### codegraph (10 tools)
-Code intelligence: load_index, find_symbol, get_callers, get_impact, find_hotspot_symbols
+### codegraph (11 tools)
+Code intelligence: load_index, load_project_indexes, find_symbol, get_callers, get_impact, find_hotspot_symbols
 
 ## Audit Workflow
 
@@ -140,8 +140,9 @@ Code intelligence: load_index, find_symbol, get_callers, get_impact, find_hotspo
 3. **Quality**: VP-Q01-Q05 (Security, Performance, Testability, Style, Docs)
 4. **Synthesis**: VP-Q06 (Root causes with Fowler Quadrant)
 
-## Key Rule
-**NEVER dump raw findings. Always synthesize into 3-5 root causes.**
+## Key Rules
+- **NEVER dump raw findings.** Always synthesize into 3-5 root causes.
+- **Use `load_project_indexes`** if `.audit/indexes/` exists for code intelligence.
 "#
 }
 
@@ -156,7 +157,7 @@ This project is configured for code auditing using the AI Code Audit Agent metho
 - **mental-model**: Central audit artifact (22 tools) - init_model, get_model, add_finding, synthesize, etc.
 - **methodology-kb**: Metrics & thresholds (11 tools) - lookup_metric, classify_finding, check_compliance
 - **sarif-tools**: Code analysis (3 tools) - list_available_tools, merge_sarif
-- **codegraph**: Code intelligence (10 tools) - load_index, find_symbol, get_impact
+- **codegraph**: Code intelligence (11 tools) - load_index, load_project_indexes, find_symbol, get_impact
 
 ## Audit Instructions
 
@@ -172,6 +173,10 @@ When asked to audit this codebase:
 - `get_findings_summary` - Get counts by severity/category/viewpoint
 - `synthesize` - Cluster findings into root causes
 - `export_findings` - Export to JSON for external tools
+- `load_project_indexes` - Auto-load SCIP indexes from .audit/indexes/
+
+## SCIP Indexes
+If `.audit/indexes/` contains SCIP index files, use `codegraph/load_project_indexes` to enable code intelligence features like symbol lookup, callers, and impact analysis.
 "#
 }
 
@@ -192,7 +197,7 @@ Run a full code audit using the viewpoints framework
 - **mental-model**: Central audit artifact management (22 tools)
 - **methodology-kb**: Metrics, thresholds, classification (11 tools)
 - **sarif-tools**: Code analysis tools (3 tools)
-- **codegraph**: SCIP-based code intelligence (10 tools)
+- **codegraph**: SCIP-based code intelligence (11 tools)
 
 ## Audit Workflow
 
@@ -256,8 +261,8 @@ Skills directory: {}/skills/
 | mental-model | 22 | Central audit artifact, findings, synthesis |
 | methodology-kb | 11 | Metrics, thresholds, classification |
 | sarif-tools | 3 | Code analysis tools |
-| codegraph | 10 | SCIP code intelligence |
-| **Total** | **46** | |
+| codegraph | 11 | SCIP code intelligence, auto-indexing |
+| **Total** | **47** | |
 "#,
         agent_dir.display(),
         agent_dir.display(),
