@@ -28,8 +28,13 @@ impl ToolRunner for RuffRunner {
         vec!["python".to_string()]
     }
 
-    fn install_command(&self) -> Option<InstallCommand> {
-        Some(InstallCommand::new("pipx", "ruff"))
+    fn install_commands(&self) -> Vec<InstallCommand> {
+        vec![
+            InstallCommand::new("pipx", "ruff"),
+            InstallCommand::new("pip", "ruff").with_args(&["--user"]),
+            InstallCommand::new("pip3", "ruff").with_args(&["--user"]),
+            InstallCommand::new("pip", "ruff"),
+        ]
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {

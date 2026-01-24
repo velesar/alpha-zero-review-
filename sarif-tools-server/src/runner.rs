@@ -51,8 +51,9 @@ pub trait ToolRunner: Send + Sync {
     /// Get supported languages
     fn supported_languages(&self) -> Vec<String>;
 
-    /// Get the install command for this tool (pip, npm, cargo, etc.)
-    fn install_command(&self) -> Option<InstallCommand>;
+    /// Get install commands for this tool, ordered by preference
+    /// Returns multiple options for cross-platform support
+    fn install_commands(&self) -> Vec<InstallCommand>;
 
     /// Run the tool on a path
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError>;
@@ -78,13 +79,30 @@ impl InstallCommand {
         }
     }
 
-    #[allow(dead_code)]
     pub fn with_args(mut self, args: &[&str]) -> Self {
         self.args = args.iter().map(|s| s.to_string()).collect();
         self
     }
 
-    /// Build the full command string
+    /// Check if this package manager is available on the system
+    pub fn is_available(&self) -> bool {
+        let manager_binary = match self.manager.as_str() {
+            "pip" => "pip",
+            "pip3" => "pip3",
+            "pipx" => "pipx",
+            "npm" => "npm",
+            "cargo" => "cargo",
+            "brew" => "brew",
+            "apt" => "apt",
+            "dnf" => "dnf",
+            "yum" => "yum",
+            "pacman" => "pacman",
+            _ => &self.manager,
+        };
+        which::which(manager_binary).is_ok()
+    }
+
+    /// Build the full command string for display
     pub fn to_command_string(&self) -> String {
         let args_str = if self.args.is_empty() {
             String::new()
@@ -93,41 +111,106 @@ impl InstallCommand {
         };
 
         match self.manager.as_str() {
-            "pip" => format!("pip install{} {}", args_str, self.package),
+            "pip" | "pip3" => format!("{} install{} {}", self.manager, args_str, self.package),
             "pipx" => format!("pipx install {}", self.package),
             "npm" => format!("npm install{} {}", args_str, self.package),
             "cargo" => format!("cargo install {}", self.package),
             "brew" => format!("brew install {}", self.package),
             "apt" => format!("sudo apt install -y {}", self.package),
+            "dnf" => format!("sudo dnf install -y {}", self.package),
+            "yum" => format!("sudo yum install -y {}", self.package),
+            "pacman" => format!("sudo pacman -S --noconfirm {}", self.package),
             _ => format!("{} install{} {}", self.manager, args_str, self.package),
         }
     }
 
     /// Execute the install command
     pub fn execute(&self) -> Result<(), RunnerError> {
+        if !self.is_available() {
+            return Err(RunnerError::ExecutionFailed(format!(
+                "Package manager '{}' not found",
+                self.manager
+            )));
+        }
+
         let (program, args) = match self.manager.as_str() {
-            "pip" => {
+            "pip" | "pip3" => {
                 let mut args = vec!["install".to_string()];
                 args.extend(self.args.clone());
                 args.push(self.package.clone());
-                ("pip".to_string(), args)
+                (self.manager.clone(), args)
             }
-            "pipx" => ("pipx".to_string(), vec!["install".to_string(), self.package.clone()]),
+            "pipx" => (
+                "pipx".to_string(),
+                vec!["install".to_string(), self.package.clone()],
+            ),
             "npm" => {
                 let mut args = vec!["install".to_string()];
                 args.extend(self.args.clone());
                 args.push(self.package.clone());
                 ("npm".to_string(), args)
             }
-            "cargo" => ("cargo".to_string(), vec!["install".to_string(), self.package.clone()]),
-            _ => return Err(RunnerError::ExecutionFailed(format!("Unknown package manager: {}", self.manager))),
+            "cargo" => (
+                "cargo".to_string(),
+                vec!["install".to_string(), self.package.clone()],
+            ),
+            "brew" => (
+                "brew".to_string(),
+                vec!["install".to_string(), self.package.clone()],
+            ),
+            "apt" => (
+                "sudo".to_string(),
+                vec![
+                    "apt".to_string(),
+                    "install".to_string(),
+                    "-y".to_string(),
+                    self.package.clone(),
+                ],
+            ),
+            "dnf" => (
+                "sudo".to_string(),
+                vec![
+                    "dnf".to_string(),
+                    "install".to_string(),
+                    "-y".to_string(),
+                    self.package.clone(),
+                ],
+            ),
+            "yum" => (
+                "sudo".to_string(),
+                vec![
+                    "yum".to_string(),
+                    "install".to_string(),
+                    "-y".to_string(),
+                    self.package.clone(),
+                ],
+            ),
+            "pacman" => (
+                "sudo".to_string(),
+                vec![
+                    "pacman".to_string(),
+                    "-S".to_string(),
+                    "--noconfirm".to_string(),
+                    self.package.clone(),
+                ],
+            ),
+            _ => {
+                return Err(RunnerError::ExecutionFailed(format!(
+                    "Unsupported package manager: {}",
+                    self.manager
+                )))
+            }
         };
 
-        tracing::info!("Installing {} via {}: {} {:?}", self.package, self.manager, program, args);
+        tracing::info!(
+            "Installing {} via {}: {} {:?}",
+            self.package,
+            self.manager,
+            program,
+            args
+        );
 
-        let output = Command::new(&program)
-            .args(&args)
-            .output()?;
+        let output = Command::new(&program).args(&args).output()?;
 
         if output.status.success() {
             Ok(())
@@ -135,7 +218,7 @@ impl InstallCommand {
             let stderr = String::from_utf8_lossy(&output.stderr);
             Err(RunnerError::ExecutionFailed(format!(
                 "Install failed: {}",
-                stderr
+                stderr.trim()
             )))
         }
     }

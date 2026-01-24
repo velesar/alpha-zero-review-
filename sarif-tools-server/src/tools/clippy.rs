@@ -77,10 +77,10 @@ impl ToolRunner for ClippyRunner {
         vec!["rust".to_string()]
     }
 
-    fn install_command(&self) -> Option<InstallCommand> {
+    fn install_commands(&self) -> Vec<InstallCommand> {
         // Clippy is a rustup component, not a standalone install
-        // Return None - user should run: rustup component add clippy
-        None
+        // Return empty - user should run: rustup component add clippy
+        vec![]
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {

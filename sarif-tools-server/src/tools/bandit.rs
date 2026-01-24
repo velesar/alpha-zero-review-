@@ -29,8 +29,13 @@ impl ToolRunner for BanditRunner {
         vec!["python".to_string()]
     }
 
-    fn install_command(&self) -> Option<InstallCommand> {
-        Some(InstallCommand::new("pipx", "bandit"))
+    fn install_commands(&self) -> Vec<InstallCommand> {
+        vec![
+            InstallCommand::new("pipx", "bandit"),
+            InstallCommand::new("pip", "bandit").with_args(&["--user"]),
+            InstallCommand::new("pip3", "bandit").with_args(&["--user"]),
+            InstallCommand::new("pip", "bandit"),
+        ]
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {

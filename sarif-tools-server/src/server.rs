@@ -102,7 +102,12 @@ pub struct InstallToolOutput {
     pub success: bool,
     pub tool: String,
     pub message: String,
-    pub install_command: Option<String>,
+    /// The command that was attempted (if any)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tried: Option<String>,
+    /// Alternative install commands the user can try
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<String>,
 }
 
 /// Output for list_available_tools
@@ -227,7 +232,7 @@ impl SarifToolsServer {
     }
 
     /// Install a code analysis tool
-    #[tool(description = "Install a code analysis tool (semgrep, bandit, ruff). Requires pipx for Python tools.")]
+    #[tool(description = "Install a code analysis tool (semgrep, bandit, ruff, trivy). Automatically detects available package managers.")]
     async fn install_tool(
         &self,
         input: Parameters<InstallToolInput>,
@@ -247,21 +252,52 @@ impl SarifToolsServer {
                 success: true,
                 tool: tool_name.clone(),
                 message: format!("{} is already installed (version: {})", tool_name, version),
-                install_command: None,
+                tried: None,
+                alternatives: vec![],
             });
         }
 
-        // Get install command
-        let install_cmd = runner.install_command().ok_or_else(|| {
-            rmcp::ErrorData::internal_error(
-                format!("{} does not support automatic installation. For clippy: rustup component add clippy", tool_name),
-                None,
-            )
-        })?;
+        // Get all install commands for this tool
+        let install_commands = runner.install_commands();
 
-        let cmd_string = install_cmd.to_command_string();
+        if install_commands.is_empty() {
+            return format_json_response(&InstallToolOutput {
+                success: false,
+                tool: tool_name.clone(),
+                message: format!(
+                    "{} does not support automatic installation. For clippy: rustup component add clippy",
+                    tool_name
+                ),
+                tried: None,
+                alternatives: vec![],
+            });
+        }
 
-        // Execute installation
+        // Collect all command strings for alternatives list
+        let all_commands: Vec<String> = install_commands
+            .iter()
+            .map(|cmd| cmd.to_command_string())
+            .collect();
+
+        // Find first available package manager
+        let available_cmd = install_commands.iter().find(|cmd| cmd.is_available());
+
+        let Some(install_cmd) = available_cmd else {
+            // No package managers available - return all as instructions
+            return format_json_response(&InstallToolOutput {
+                success: false,
+                tool: tool_name.clone(),
+                message: format!(
+                    "No supported package manager found. Install one of the following manually:"
+                ),
+                tried: None,
+                alternatives: all_commands,
+            });
+        };
+
+        let tried_cmd = install_cmd.to_command_string();
+
+        // Execute installation (hybrid: try first available, return alternatives on failure)
         match install_cmd.execute() {
             Ok(()) => {
                 // Verify installation
@@ -271,23 +307,30 @@ impl SarifToolsServer {
                         success: true,
                         tool: tool_name.clone(),
                         message: format!("Successfully installed {} (version: {})", tool_name, version),
-                        install_command: Some(cmd_string),
+                        tried: Some(tried_cmd),
+                        alternatives: vec![],
                     })
                 } else {
                     format_json_response(&InstallToolOutput {
                         success: false,
                         tool: tool_name.clone(),
-                        message: format!("Installation completed but {} is not available in PATH. You may need to restart your shell.", tool_name),
-                        install_command: Some(cmd_string),
+                        message: format!(
+                            "Installation completed but {} is not available in PATH. You may need to restart your shell or add ~/.local/bin to PATH.",
+                            tool_name
+                        ),
+                        tried: Some(tried_cmd),
+                        alternatives: all_commands,
                     })
                 }
             }
             Err(e) => {
+                // Failed - return error with alternatives
                 format_json_response(&InstallToolOutput {
                     success: false,
                     tool: tool_name.clone(),
-                    message: format!("Installation failed: {}. Try running manually: {}", e, cmd_string),
-                    install_command: Some(cmd_string),
+                    message: format!("Installation failed: {}", e),
+                    tried: Some(tried_cmd),
+                    alternatives: all_commands,
                 })
             }
         }

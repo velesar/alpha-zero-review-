@@ -32,10 +32,17 @@ impl ToolRunner for TrivyRunner {
         ].into_iter().map(String::from).collect()
     }
 
-    fn install_command(&self) -> Option<InstallCommand> {
-        // Trivy can be installed via brew on macOS or downloaded from releases
-        // For broad compatibility, recommend brew
-        Some(InstallCommand::new("brew", "trivy"))
+    fn install_commands(&self) -> Vec<InstallCommand> {
+        vec![
+            // Linux package managers (Fedora/RHEL/CentOS)
+            InstallCommand::new("dnf", "trivy"),
+            // Debian/Ubuntu
+            InstallCommand::new("apt", "trivy"),
+            // Arch Linux
+            InstallCommand::new("pacman", "trivy"),
+            // macOS
+            InstallCommand::new("brew", "trivy"),
+        ]
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {

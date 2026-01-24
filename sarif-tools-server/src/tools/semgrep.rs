@@ -33,9 +33,13 @@ impl ToolRunner for SemgrepRunner {
         ].into_iter().map(String::from).collect()
     }
 
-    fn install_command(&self) -> Option<InstallCommand> {
-        // Prefer pipx for isolated install, fallback to pip
-        Some(InstallCommand::new("pipx", "semgrep"))
+    fn install_commands(&self) -> Vec<InstallCommand> {
+        vec![
+            InstallCommand::new("pipx", "semgrep"),
+            InstallCommand::new("pip", "semgrep").with_args(&["--user"]),
+            InstallCommand::new("pip3", "semgrep").with_args(&["--user"]),
+            InstallCommand::new("pip", "semgrep"),
+        ]
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {
