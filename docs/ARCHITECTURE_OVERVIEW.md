@@ -14,8 +14,8 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 
 | Metric | Value |
 |--------|-------|
-| Total Lines of Code | 10,691 |
-| Number of Crates | 4 |
+| Total Lines of Code | 11,360 |
+| Number of Crates | 5 |
 | MCP Tools | 46 |
 | Total Tests | 128 |
 | Primary Language | Rust 2021 |
@@ -24,7 +24,7 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 
 | Category | Score | Notes |
 |----------|-------|-------|
-| Modularity | **Excellent** | Clean separation into 4 independent crates |
+| Modularity | **Excellent** | Clean separation into 5 independent crates |
 | Consistency | **Excellent** | Uniform patterns across all servers |
 | Testability | **Good** | 128 tests, room for more coverage |
 | Documentation | **Good** | CLAUDE.md comprehensive, inline docs present |
@@ -38,8 +38,8 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 
 | Metric | Value |
 |--------|-------|
-| **Total Lines of Code** | 10,691 |
-| **Rust Files** | 36 |
+| **Total Lines of Code** | 11,360 |
+| **Rust Files** | 39 |
 | **Test Files** | 4 |
 | **Documentation Files** | 15 |
 
@@ -51,7 +51,8 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 | methodology-kb-server | 2,127 | 8 | 11 | 37 |
 | sarif-tools-server | 2,739 | 12 | 3 | 62 |
 | codegraph-server | 1,207 | 6 | 10 | 30 |
-| **Total** | **9,497** | **34** | **46** | **174** |
+| setup-cli | 669 | 3 | - | - |
+| **Total** | **10,166** | **37** | **46** | **174** |
 
 ### Quality Metrics
 
@@ -690,6 +691,42 @@ codegraph-server/src/
 3. Caller/callee relationship tracking
 4. Change impact analysis
 5. Hotspot symbol detection
+
+---
+
+### setup-cli (669 LOC)
+
+Setup CLI for configuring audit environments across different AI CLI tools.
+
+```
+setup-cli/src/
+├── main.rs      (180 LOC) ─── CLI entry point, clap argument parsing
+├── config.rs    (160 LOC) ─── Configuration generation for each tool
+└── templates.rs (329 LOC) ─── Embedded JSON/markdown templates
+```
+
+**Key Features:**
+- Multi-CLI support: Claude CLI, Codex CLI, Cline VS Code extension
+- Type-safe path validation
+- Embedded templates (no external files needed)
+- Copies existing CLAUDE.md from agent directory
+
+**CLI Interface:**
+```bash
+setup-audit /path/to/project --cli claude  # default
+setup-audit /path/to/project --cli codex
+setup-audit /path/to/project --cli cline
+setup-audit /path/to/project --all         # all tools
+setup-audit /path/to/project --clean       # remove existing configs
+```
+
+**Generated Files by Tool:**
+
+| Tool | Config Files | Instruction Files |
+|------|--------------|-------------------|
+| Claude | `.mcp.json` | `CLAUDE.md` (copied) |
+| Codex | `codex.json` | `AGENTS.md` |
+| Cline | `.cline/mcp_settings.json` | `.clinerules` |
 
 ---
 
