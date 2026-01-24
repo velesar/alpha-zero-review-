@@ -123,6 +123,7 @@ impl CodegraphServer {
     }
 
     /// Helper to get any available graph (prefers multi-graph, falls back to single)
+    #[allow(dead_code)] // Helper for future multi-graph support
     fn get_any_graph(&self) -> Result<std::sync::RwLockReadGuard<'_, Option<Codegraph>>, rmcp::ErrorData> {
         // First check if we have graphs loaded via load_project_indexes
         let graphs = self.graphs.read().map_err(|e| {
@@ -542,17 +543,15 @@ impl ServerHandler for CodegraphServer {
         }
     }
 
-    fn list_tools(
+    async fn list_tools(
         &self,
         _pagination: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
-        async move {
-            Ok(ListToolsResult {
-                tools: self.tool_router.list_all(),
-                next_cursor: None,
-            })
-        }
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult {
+            tools: self.tool_router.list_all(),
+            next_cursor: None,
+        })
     }
 
     fn call_tool(

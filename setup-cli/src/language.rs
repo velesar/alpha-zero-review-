@@ -14,7 +14,8 @@ pub enum Language {
 }
 
 impl Language {
-    /// Get the artifact key for this language
+    /// Get the artifact key for this language (for artifact storage naming)
+    #[allow(dead_code)] // Public API for external use
     pub fn artifact_key(&self) -> &'static str {
         match self {
             Language::Rust => "scip-rust",
@@ -39,6 +40,7 @@ impl Language {
     }
 
     /// Get all supported languages
+    #[allow(dead_code)] // Public API for external use
     pub fn all() -> &'static [Language] {
         &[
             Language::Rust,
@@ -126,14 +128,14 @@ fn has_files_with_extension(project_path: &Path, ext: &str) -> bool {
             if let Ok(entries) = std::fs::read_dir(&check_path) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.extension().map_or(false, |e| e == ext) {
+                    if path.extension().is_some_and(|e| e == ext) {
                         return true;
                     }
                     // Check one level deeper
                     if path.is_dir() {
                         if let Ok(subentries) = std::fs::read_dir(&path) {
                             for subentry in subentries.flatten() {
-                                if subentry.path().extension().map_or(false, |e| e == ext) {
+                                if subentry.path().extension().is_some_and(|e| e == ext) {
                                     return true;
                                 }
                             }

@@ -1005,17 +1005,15 @@ impl ServerHandler for MentalModelServer {
         }
     }
 
-    fn list_tools(
+    async fn list_tools(
         &self,
         _pagination: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
-        async move {
-            Ok(ListToolsResult {
-                tools: self.tool_router.list_all(),
-                next_cursor: None,
-            })
-        }
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult {
+            tools: self.tool_router.list_all(),
+            next_cursor: None,
+        })
     }
 
     fn call_tool(

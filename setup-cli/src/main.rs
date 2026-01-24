@@ -10,7 +10,7 @@ mod templates;
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueEnum};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
 pub enum CliTool {
@@ -181,7 +181,7 @@ fn find_agent_dir() -> Result<PathBuf> {
     bail!("Could not find agent directory. Set AGENT_DIR environment variable.")
 }
 
-fn check_servers(agent_dir: &PathBuf) -> Result<()> {
+fn check_servers(agent_dir: &Path) -> Result<()> {
     println!("Checking MCP servers...");
 
     let servers = [
@@ -214,7 +214,7 @@ fn check_servers(agent_dir: &PathBuf) -> Result<()> {
 }
 
 fn build_indexes(
-    target_dir: &PathBuf,
+    target_dir: &Path,
     install_missing: bool,
 ) -> Result<Vec<(language::Language, PathBuf)>> {
     println!("Detecting project languages...");
@@ -267,7 +267,7 @@ fn build_indexes(
 }
 
 fn print_completion(
-    target_dir: &PathBuf,
+    target_dir: &Path,
     tools: &[CliTool],
     indexes: &[(language::Language, PathBuf)],
 ) {

@@ -318,7 +318,7 @@ fn has_extension(path: &Path, ext: &str) -> bool {
 
         if let Ok(entries) = std::fs::read_dir(&check_path) {
             for entry in entries.flatten() {
-                if entry.path().extension().map_or(false, |e| e == ext) {
+                if entry.path().extension().is_some_and(|e| e == ext) {
                     return true;
                 }
             }

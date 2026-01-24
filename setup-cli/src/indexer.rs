@@ -21,7 +21,6 @@ pub struct IndexerStatus {
 /// Indexer configuration for each language
 #[derive(Debug, Clone)]
 pub struct IndexerConfig {
-    pub language: Language,
     /// Command to check availability
     pub check_command: &'static str,
     /// Arguments for version check
@@ -42,7 +41,6 @@ impl IndexerConfig {
     pub fn for_language(lang: Language) -> Self {
         match lang {
             Language::Rust => IndexerConfig {
-                language: Language::Rust,
                 check_command: "rust-analyzer",
                 check_args: &["--version"],
                 build_command: "rust-analyzer",
@@ -52,7 +50,6 @@ impl IndexerConfig {
                 install_command: Some(&["rustup", "component", "add", "rust-analyzer"]),
             },
             Language::TypeScript | Language::JavaScript => IndexerConfig {
-                language: lang,
                 check_command: "scip-typescript",
                 check_args: &["--version"],
                 build_command: "scip-typescript",
@@ -62,7 +59,6 @@ impl IndexerConfig {
                 install_command: Some(&["npm", "install", "-g", "@sourcegraph/scip-typescript"]),
             },
             Language::Python => IndexerConfig {
-                language: Language::Python,
                 check_command: "scip-python",
                 check_args: &["--version"],
                 build_command: "scip-python",
@@ -72,7 +68,6 @@ impl IndexerConfig {
                 install_command: Some(&["pip", "install", "scip-python"]),
             },
             Language::Go => IndexerConfig {
-                language: Language::Go,
                 check_command: "scip-go",
                 check_args: &["--version"],
                 build_command: "scip-go",
@@ -86,7 +81,6 @@ impl IndexerConfig {
                 ]),
             },
             Language::Java => IndexerConfig {
-                language: Language::Java,
                 check_command: "scip-java",
                 check_args: &["--version"],
                 build_command: "scip-java",
@@ -298,6 +292,7 @@ pub fn build_index(lang: Language, project_path: &Path, output_dir: &Path) -> Re
 }
 
 /// Get current git commit hash
+#[allow(dead_code)] // Utility function for future use
 pub fn get_current_commit(project_path: &Path) -> Result<String> {
     let output = Command::new("git")
         .args(["rev-parse", "HEAD"])

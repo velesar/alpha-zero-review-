@@ -18,7 +18,7 @@ use rmcp::{
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Methodology KB MCP Server
@@ -149,7 +149,7 @@ impl MethodologyKBServer {
         }
     }
 
-    fn load_kb(kb_path: &PathBuf) -> Result<MethodologyKB> {
+    fn load_kb(kb_path: &Path) -> Result<MethodologyKB> {
         let mut kb = MethodologyKB::default();
 
         // Load metrics from glossary
@@ -629,17 +629,15 @@ impl ServerHandler for MethodologyKBServer {
         }
     }
 
-    fn list_tools(
+    async fn list_tools(
         &self,
         _pagination: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ListToolsResult, ErrorData>> + Send + '_ {
-        async move {
-            Ok(ListToolsResult {
-                tools: self.tool_router.list_all(),
-                next_cursor: None,
-            })
-        }
+    ) -> Result<ListToolsResult, ErrorData> {
+        Ok(ListToolsResult {
+            tools: self.tool_router.list_all(),
+            next_cursor: None,
+        })
     }
 
     fn call_tool(

@@ -352,7 +352,7 @@ fn test_symbol_kind_variants() {
     assert_ne!(SymbolKind::Function, SymbolKind::Class);
 
     // Test all variants compile
-    let _kinds = vec![
+    let _kinds = [
         SymbolKind::Class,
         SymbolKind::Function,
         SymbolKind::Method,
@@ -372,7 +372,7 @@ fn test_reference_role_variants() {
     assert_ne!(ReferenceRole::Call, ReferenceRole::Import);
 
     // Test all variants compile
-    let _roles = vec![
+    let _roles = [
         ReferenceRole::Definition,
         ReferenceRole::Reference,
         ReferenceRole::Call,

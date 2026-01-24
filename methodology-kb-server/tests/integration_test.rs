@@ -183,7 +183,7 @@ fn test_methodology_kb_with_data() {
 
 #[test]
 fn test_project_type_variants() {
-    let types = vec![
+    let types = [
         ProjectType::Greenfield,
         ProjectType::Mature,
         ProjectType::Legacy,
