@@ -1,7 +1,7 @@
 # AI Code Audit Agent - Architecture Overview & System Design
 
-**Audit Date:** 2026-01-23
-**Commit:** `0eb9fd8`
+**Audit Date:** 2026-01-24
+**Commit:** `2991ecb`
 **Methodology:** Mental Model Viewpoints Framework v2.0
 
 ---
@@ -14,11 +14,11 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 
 | Metric | Value |
 |--------|-------|
-| Total Lines of Code | 6,847 |
+| Total Lines of Code | 10,691 |
 | Number of Crates | 4 |
-| MCP Tools | 28 |
-| Integration Tests | 63 |
-| Primary Language | Rust 1.75+ |
+| MCP Tools | 46 |
+| Total Tests | 128 |
+| Primary Language | Rust 2021 |
 
 ### Architecture Health Score
 
@@ -346,11 +346,26 @@ Symbol (Codegraph)
 
 | Server | Tools | Purpose |
 |--------|-------|---------|
-| mental-model | 12 | Model management, artifacts, findings |
-| methodology-kb | 8 | Metrics, thresholds, classification |
-| sarif-tools | 5 | Tool execution, SARIF processing |
-| codegraph | 9 | Symbol analysis, impact assessment |
-| **Total** | **34** | |
+| mental-model | 22 | Model management, artifacts, findings, queries |
+| methodology-kb | 11 | Metrics, thresholds, classification, acquisition |
+| sarif-tools | 3 | Tool execution, SARIF processing |
+| codegraph | 10 | Symbol analysis, impact assessment |
+| **Total** | **46** | |
+
+### Recent Tool Additions (ADRs 0005-0007)
+
+| Tool | Server | ADR |
+|------|--------|-----|
+| `add_findings` (batch) | mental-model | 0005 |
+| `get_contexts` (batch) | mental-model | 0005 |
+| `get_model_section` | mental-model | 0005 |
+| `flush` | mental-model | 0006 |
+| `get_findings_by_file` | mental-model | 0007 |
+| `get_findings_by_severity` | mental-model | 0007 |
+| `get_findings_by_viewpoint` | mental-model | 0007 |
+| `get_findings_by_category` | mental-model | 0007 |
+| `get_findings_summary` | mental-model | 0007 |
+| `export_findings` | mental-model | 0007 |
 
 ### Key Tool Interfaces
 
@@ -501,6 +516,223 @@ codegraph-server     ──────┘
 
 ---
 
+## Crate Deep Dive Architecture
+
+### mental-model-server (3,424 LOC)
+
+The core crate that manages the central mental model artifact.
+
+```
+mental-model-server/src/
+├── server.rs      (1,248 LOC) ─── MCP handlers, 22 tools
+├── model.rs         (653 LOC) ─── Domain entities (30+ types)
+├── findings_store.rs (556 LOC) ─── SQLite backend (ADR-0007)
+├── artifacts.rs     (351 LOC) ─── Commit-indexed storage
+├── ops.rs           (313 LOC) ─── Severity adjustment, synthesis
+├── error.rs         (142 LOC) ─── 4 error enums
+├── utils.rs          (84 LOC) ─── Formatting helpers
+├── main.rs           (65 LOC) ─── CLI entry point
+└── lib.rs            (12 LOC) ─── Public exports
+```
+
+**Key Types:**
+- `MentalModel` - Central aggregate (project, tech_stack, architecture, etc.)
+- `Finding` - Quality issue with context enrichment
+- `FindingsStore` - SQLite-backed query-optimized storage
+- `ArtifactStore` - Commit-indexed SARIF/SCIP storage
+
+**Responsibilities:**
+1. Mental model lifecycle (init, update, persist)
+2. Context-aware finding enrichment
+3. Root cause synthesis algorithms
+4. Artifact versioning by git commit
+
+---
+
+### methodology-kb-server (2,127 LOC)
+
+Knowledge base for metrics, thresholds, and standards.
+
+```
+methodology-kb-server/src/
+├── server.rs      (657 LOC) ─── MCP handlers, 11 tools
+├── acquisition.rs (404 LOC) ─── Cascade metric retrieval
+├── ops.rs         (379 LOC) ─── Classification algorithms
+├── types.rs       (255 LOC) ─── Domain types (25+ types)
+├── domain.rs      (143 LOC) ─── Rule mappings index
+├── error.rs       (134 LOC) ─── 5 error enums
+├── utils.rs        (78 LOC) ─── Formatting helpers
+├── main.rs         (65 LOC) ─── CLI entry point
+└── lib.rs          (12 LOC) ─── Public exports
+```
+
+**Key Types:**
+- `MetricDefinition` - Metric with thresholds
+- `CategoryDefinition` - Finding categories with adjustment rules
+- `ArchitectureStandard` - Clean architecture, layered patterns
+- `ClassificationResult` - Severity with adjustment factors
+
+**Responsibilities:**
+1. Metric lookups with project-type awareness
+2. Finding classification with context adjustment
+3. Architecture compliance checking
+4. Data acquisition cascade (cache → artifact → tool)
+
+---
+
+### sarif-tools-server (2,739 LOC)
+
+Code analysis tool execution and SARIF processing.
+
+```
+sarif-tools-server/src/
+├── sarif.rs       (578 LOC) ─── SARIF 2.1.0 spec (15 types)
+├── tools/
+│   ├── clippy.rs  (275 LOC) ─── Rust clippy runner
+│   ├── bandit.rs  (122 LOC) ─── Python security
+│   ├── trivy.rs   (122 LOC) ─── Container security
+│   ├── ruff.rs    (111 LOC) ─── Python linter
+│   ├── semgrep.rs (109 LOC) ─── Multi-language security
+│   └── mod.rs     (103 LOC) ─── Tool registry
+├── ops.rs         (273 LOC) ─── Merge, normalize operations
+├── server.rs      (261 LOC) ─── MCP handlers, 3 tools
+├── utils.rs       (256 LOC) ─── Parsing, rule mappings
+├── domain.rs      (232 LOC) ─── ToolConfig, RuleMappings
+├── runner.rs      (113 LOC) ─── Subprocess execution
+├── error.rs       (107 LOC) ─── 3 error enums
+├── main.rs         (64 LOC) ─── CLI entry point
+└── lib.rs          (13 LOC) ─── Public exports
+```
+
+**Key Types:**
+- `Sarif` - Full SARIF 2.1.0 representation
+- `ToolConfig` - Tool-specific configuration
+- `ToolRunner` - Subprocess execution with output parsing
+- `RuleMappings` - Rule ID to category/severity mappings
+
+**Responsibilities:**
+1. Tool availability detection
+2. Subprocess execution with JSON/SARIF output
+3. SARIF merging from multiple tools
+4. Result normalization with rule mappings
+
+---
+
+### codegraph-server (1,207 LOC)
+
+SCIP-based semantic code intelligence.
+
+```
+codegraph-server/src/
+├── server.rs      (400 LOC) ─── MCP handlers, 10 tools
+├── graph.rs       (383 LOC) ─── Symbol graph (10 types)
+├── ops.rs         (175 LOC) ─── Impact analysis, hotspots
+├── error.rs       (103 LOC) ─── 3 error enums
+├── utils.rs        (78 LOC) ─── Formatting helpers
+├── main.rs         (58 LOC) ─── CLI entry point
+└── lib.rs          (10 LOC) ─── Public exports
+```
+
+**Key Types:**
+- `Codegraph` - Symbol index with references
+- `Symbol` - Named entity with kind, location, docs
+- `Reference` - Symbol usage with role (definition, call, import)
+- `Impact` - Change impact analysis result
+
+**Responsibilities:**
+1. SCIP index loading and parsing
+2. Symbol search and lookup
+3. Caller/callee relationship tracking
+4. Change impact analysis
+5. Hotspot symbol detection
+
+---
+
+## VP-Q06: Technical Debt Synthesis
+
+### Root Cause Analysis
+
+After analyzing all findings across the quality viewpoints, I identified **3 root causes**:
+
+#### RC-001: Documentation Gaps (Low Impact)
+**Pattern:** Missing API-level documentation
+- 50+ Clippy warnings about missing `# Errors` sections
+- No doc-tests across any crate
+- Function-level comments sparse
+
+**Affected Files:**
+- All `server.rs` files (MCP tools lack `# Errors` docs)
+- Complex algorithms in `ops.rs` files
+
+**Fowler Quadrant:** Prudent/Inadvertent
+> "Now we know better" - docs weren't prioritized during rapid development
+
+**Recommendation:**
+```bash
+# Add rustdoc comments to all public functions
+# Add # Errors section to Result-returning functions
+# Add doc-tests for key algorithms
+```
+
+---
+
+#### RC-002: Style Inconsistencies (Low Impact)
+**Pattern:** Pedantic Clippy warnings accumulated
+- Missing `#[must_use]` attributes (15 occurrences)
+- Struct name repetition (`Self::` vs explicit)
+- Redundant closures and clones
+
+**Affected Files:**
+- All crates, primarily `server.rs` and `ops.rs`
+
+**Fowler Quadrant:** Prudent/Inadvertent
+> Auto-fixable, accumulated during development
+
+**Recommendation:**
+```bash
+cargo clippy --fix --allow-dirty --all
+```
+
+---
+
+#### RC-003: Missing SCIP Proto (Medium Impact)
+**Pattern:** codegraph-server uses fallback types
+- `proto/scip.proto` not present in repository
+- Build warning: "SCIP proto not found, using simplified types"
+- Limited semantic analysis capabilities
+
+**Affected Files:**
+- `codegraph-server/build.rs:10`
+- `codegraph-server/src/graph.rs`
+
+**Fowler Quadrant:** Deliberate/Prudent
+> Intentional simplification for initial release
+
+**Recommendation:**
+- Option A: Add SCIP proto from sourcegraph/scip repository
+- Option B: Document as intentional limitation in README
+
+---
+
+### Technical Debt Summary
+
+```
+                DELIBERATE              INADVERTENT
+         ┌────────────────────┬────────────────────┐
+ PRUDENT │ RC-003: Missing    │ RC-001: Doc gaps   │
+         │ SCIP proto         │ RC-002: Style      │
+         │ (intentional MVP)  │ (auto-fixable)     │
+         ├────────────────────┼────────────────────┤
+RECKLESS │                    │                    │
+         │     (none)         │     (none)         │
+         │                    │                    │
+         └────────────────────┴────────────────────┘
+```
+
+**Total Debt Score: 3 items (all low-to-medium impact)**
+
+---
+
 ## Findings & Recommendations
 
 ### Strengths
@@ -516,21 +748,29 @@ codegraph-server     ──────┘
 
 | Finding | Severity | Recommendation |
 |---------|----------|----------------|
-| Large server.rs files (650-775 LOC) | Low | Consider splitting into modules as they grow |
-| No code coverage metrics | Low | Add coverage reporting to CI |
-| Clippy still running externally | Low | Rebuild servers to include new clippy runner |
-| Missing explicit ADR documentation | Low | Create `docs/adr/` with formal ADRs |
+| Large server.rs files (1,248 LOC max) | Low | Consider splitting into modules as they grow |
+| Missing API documentation | Low | Add `# Errors` sections to Result-returning fns |
+| Clippy pedantic warnings | Low | Run `cargo clippy --fix` to auto-fix |
+| Missing SCIP proto | Medium | Add proto or document as intentional |
+
+### Recent Improvements (ADRs)
+
+| ADR | Improvement | Impact |
+|-----|-------------|--------|
+| 0005 | Batch operations | Reduced MCP round-trips by 5-10x |
+| 0006 | Deferred persistence | Reduced disk I/O from 67 to ~5 writes |
+| 0007 | SQLite findings store | O(log n) queries, 90% model size reduction |
 
 ### Technical Debt Assessment (Fowler Quadrant)
 
 | Quadrant | Items | Examples |
 |----------|-------|----------|
-| Prudent-Deliberate | 1 | Server files kept monolithic for simplicity |
-| Prudent-Inadvertent | 2 | Style suggestions from clippy |
+| Prudent-Deliberate | 1 | Missing SCIP proto (intentional MVP) |
+| Prudent-Inadvertent | 2 | Doc gaps, style inconsistencies |
 | Reckless-Deliberate | 0 | None |
 | Reckless-Inadvertent | 0 | None |
 
-**Overall Health:** The codebase is in excellent condition with minimal technical debt.
+**Overall Health:** The codebase is in excellent condition with minimal technical debt. All 3 root causes are low-to-medium impact and actionable.
 
 ---
 
