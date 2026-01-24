@@ -411,6 +411,138 @@ cargo fmt --check
 
 ---
 
+## VP-Q01: Security Analysis
+
+### Security Posture Assessment
+
+| Aspect | Status | Notes |
+|--------|--------|-------|
+| Unsafe Code | ✅ None | No `unsafe` blocks in production code |
+| SQL Injection | ✅ Mitigated | Using parameterized queries (rusqlite) |
+| Path Traversal | ✅ Mitigated | Paths validated before file operations |
+| Command Injection | ⚠️ Review | Tool execution uses subprocess |
+| Input Validation | ✅ Good | MCP schema validation via schemars |
+
+### Unwrap/Panic Analysis
+
+| Location | Count | Risk |
+|----------|-------|------|
+| Test code | 89 | ✅ Acceptable |
+| Build scripts | 1 | ✅ Acceptable |
+| Production code | 2 | ⚠️ Low risk (startup) |
+
+**Production `expect()` locations:**
+1. `mental-model-server/src/server.rs:280` - FindingsStore creation at startup
+2. `codegraph-server/build.rs:10` - Proto compilation (build-time)
+
+### Recommendations
+- Consider replacing startup `expect()` with proper error propagation
+- Add input sanitization for file paths in tool execution
+
+---
+
+## VP-Q02: Performance Analysis
+
+### Optimization Implementations
+
+| ADR | Optimization | Impact |
+|-----|--------------|--------|
+| 0005 | Batch operations | Reduced MCP round-trips |
+| 0006 | Deferred persistence | Reduced disk I/O |
+| 0007 | SQLite findings store | O(log n) queries |
+
+### Async Patterns
+- All MCP handlers are async (tokio)
+- Proper use of `Arc<RwLock<>>` for shared state
+- SQLite wrapped in `Arc<Mutex<>>` (thread-safe)
+
+### Potential Improvements
+- Consider connection pooling for SQLite (currently single connection)
+- Add benchmarks for batch operations
+
+---
+
+## VP-Q03: Testability Analysis
+
+### Test Coverage
+
+| Crate | Unit Tests | Integration | Total |
+|-------|------------|-------------|-------|
+| mental-model-server | 23 | 11 | 34 |
+| methodology-kb-server | 11 | 13 | 24 |
+| sarif-tools-server | 42 | 10 | 52 |
+| codegraph-server | 6 | 12 | 18 |
+| **Total** | 82 | 46 | **128** |
+
+### Test Patterns
+- ✅ In-memory SQLite for FindingsStore tests
+- ✅ TempDir for file system tests
+- ✅ Builder patterns for test data
+- ✅ Error case coverage
+
+### Missing Coverage
+- No doc-tests (0 across all crates)
+- No property-based tests
+- No MCP client integration tests
+
+---
+
+## VP-Q04: Code Style Analysis
+
+### Clippy Analysis (Pedantic Mode)
+
+| Category | Count | Examples |
+|----------|-------|----------|
+| Missing `#[must_use]` | 15 | Builder methods, pure functions |
+| Doc backticks | 8 | Documentation formatting |
+| Struct repetition | 6 | `Self::` vs type name |
+| Redundant patterns | 4 | Closures, clones |
+| Missing `# Errors` | 4 | Doc sections for Result fns |
+
+### Code Consistency
+- ✅ Consistent module structure across all servers
+- ✅ Uniform error handling with thiserror
+- ✅ Consistent naming conventions
+- ⚠️ Some async style inconsistencies
+
+### Auto-fixable Issues
+```bash
+cargo clippy --fix --allow-dirty --all
+```
+Would fix ~20 warnings automatically.
+
+---
+
+## VP-Q05: Documentation Analysis
+
+### Documentation Coverage
+
+| Type | Status |
+|------|--------|
+| Crate-level docs | ✅ All 4 crates |
+| README.md | ✅ Comprehensive |
+| CLAUDE.md | ✅ Claude CLI instructions |
+| Architecture docs | ✅ ARCHITECTURE_OVERVIEW.md |
+| Operations guide | ✅ OPERATIONS_GUIDE.md |
+| ADRs | ✅ 7 documented decisions |
+| Skill definitions | ✅ 19 viewpoints |
+
+### Documentation Quality
+
+| Aspect | Score |
+|--------|-------|
+| API documentation | 3/5 (room for improvement) |
+| Architecture documentation | 5/5 |
+| Decision records | 5/5 |
+| User guides | 4/5 |
+
+### Missing Documentation
+- Function-level doc comments (missing `# Errors` sections)
+- No doc-tests for public API
+- Inline comments sparse in complex algorithms
+
+---
+
 ## VP-Q01: Code Quality Findings
 
 ### Clippy Analysis Results
