@@ -253,11 +253,11 @@ impl Codegraph {
 
         symbol_id
             .split('/')
-            .last()
+            .next_back()
             .and_then(|s| s.split('`').nth(1))
-            .or_else(|| symbol_id.split('/').last())
+            .or_else(|| symbol_id.split('/').next_back())
             .unwrap_or(symbol_id)
-            .trim_end_matches(|c| c == '(' || c == ')' || c == '.' || c == '#')
+            .trim_end_matches(['(', ')', '.', '#'])
             .to_string()
     }
 

@@ -287,9 +287,7 @@ impl SarifToolsServer {
             return format_json_response(&InstallToolOutput {
                 success: false,
                 tool: tool_name.clone(),
-                message: format!(
-                    "No supported package manager found. Install one of the following manually:"
-                ),
+                message: "No supported package manager found. Install one of the following manually:".to_string(),
                 tried: None,
                 alternatives: all_commands,
             });

@@ -6,8 +6,13 @@ fn main() {
     // Check if proto file exists
     let proto_path = "proto/scip.proto";
     if std::path::Path::new(proto_path).exists() {
+        // Configure prost to skip doc comments (they contain invalid Rust examples
+        // from the upstream SCIP proto that cause doctest failures)
+        let mut config = prost_build::Config::new();
+        config.disable_comments(["."]); // Disable all doc comments
+
         // Try to compile, but don't fail if protoc is missing
-        match prost_build::compile_protos(&[proto_path], &["proto/"]) {
+        match config.compile_protos(&[proto_path], &["proto/"]) {
             Ok(_) => {
                 println!("cargo:warning=SCIP proto compiled successfully");
             }

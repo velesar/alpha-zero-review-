@@ -152,10 +152,14 @@ jobs:
         run: pip install bandit[sarif]
 
       - name: Run Bandit
+        env:
+          TARGET_PATH: ${{ github.event.inputs.target_path || '.' }}
+          ARTIFACTS_DIR: ${{ env.AUDIT_ARTIFACTS_DIR }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          bandit -r ${{ github.event.inputs.target_path || '.' }} \
+          bandit -r "$TARGET_PATH" \
             -f sarif \
-            -o ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/bandit.sarif \
+            -o "$ARTIFACTS_DIR/$COMMIT_SHA/bandit.sarif" \
             --exit-zero \
             -ll
 
@@ -191,10 +195,14 @@ jobs:
         run: pip install ruff
 
       - name: Run Ruff
+        env:
+          TARGET_PATH: ${{ github.event.inputs.target_path || '.' }}
+          ARTIFACTS_DIR: ${{ env.AUDIT_ARTIFACTS_DIR }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          ruff check ${{ github.event.inputs.target_path || '.' }} \
+          ruff check "$TARGET_PATH" \
             --output-format sarif \
-            --output-file ${{ env.AUDIT_ARTIFACTS_DIR }}/${{ github.sha }}/ruff.sarif \
+            --output-file "$ARTIFACTS_DIR/$COMMIT_SHA/ruff.sarif" \
             --exit-zero
 
       - name: Upload Ruff SARIF

@@ -119,41 +119,51 @@ jobs:
         continue-on-error: true
 
       - name: Generate metadata
+        env:
+          AUDIT_DIR_PATH: ${{ env.AUDIT_DIR }}
+          COMMIT_SHORT_VAL: ${{ env.COMMIT_SHORT }}
+          COMMIT_FULL_VAL: ${{ env.COMMIT_FULL }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          AUDIT_SCOPE: ${{ inputs.audit_scope }}
+          TRIGGERED_BY: ${{ github.actor }}
         run: |
-          cat > ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml << EOF
-          commit: ${{ env.COMMIT_FULL }}
-          commit_short: ${{ env.COMMIT_SHORT }}
-          branch: ${{ github.ref_name }}
+          cat > "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/_meta.yaml" << EOF
+          commit: $COMMIT_FULL_VAL
+          commit_short: $COMMIT_SHORT_VAL
+          branch: $BRANCH_NAME
           timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          audit_scope: ${{ inputs.audit_scope }}
-          triggered_by: ${{ github.actor }}
+          audit_scope: $AUDIT_SCOPE
+          triggered_by: $TRIGGERED_BY
           artifacts:
           EOF
 
-          for f in ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/*.sarif; do
+          for f in "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL"/*.sarif; do
             if [ -f "$f" ]; then
               name=$(basename "$f" .sarif)
-              echo "  $name:" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
-              echo "    produced_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
-              echo "    producer: github-actions-manual" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+              echo "  $name:" >> "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/_meta.yaml"
+              echo "    produced_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/_meta.yaml"
+              echo "    producer: github-actions-manual" >> "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/_meta.yaml"
             fi
           done
 
-          if [ -f "${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/scip.scip" ]; then
-            echo "  scip:" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
-            echo "    produced_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
-            echo "    producer: github-actions-manual" >> ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+          if [ -f "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/scip.scip" ]; then
+            echo "  scip:" >> "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/_meta.yaml"
+            echo "    produced_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/_meta.yaml"
+            echo "    producer: github-actions-manual" >> "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/_meta.yaml"
           fi
 
-          echo "${{ env.COMMIT_SHORT }}" > ${{ env.AUDIT_DIR }}/latest
+          echo "$COMMIT_SHORT_VAL" > "$AUDIT_DIR_PATH/latest"
 
       - name: List artifacts
+        env:
+          AUDIT_DIR_PATH: ${{ env.AUDIT_DIR }}
+          COMMIT_SHORT_VAL: ${{ env.COMMIT_SHORT }}
         run: |
           echo "=== Audit Artifacts ==="
-          ls -la ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/
+          ls -la "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/"
           echo ""
           echo "=== Metadata ==="
-          cat ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/_meta.yaml
+          cat "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/_meta.yaml"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -163,18 +173,24 @@ jobs:
           retention-days: ${{ inputs.retain_days }}
 
       - name: Generate summary
+        env:
+          AUDIT_DIR_PATH: ${{ env.AUDIT_DIR }}
+          COMMIT_SHORT_VAL: ${{ env.COMMIT_SHORT }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          AUDIT_SCOPE: ${{ inputs.audit_scope }}
+          GENERATE_SCIP: ${{ inputs.generate_scip }}
         run: |
           echo "## Manual Audit Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit | \`${{ env.COMMIT_SHORT }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Scope | ${{ inputs.audit_scope }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SCIP Index | ${{ inputs.generate_scip }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`$COMMIT_SHORT_VAL\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | $BRANCH_NAME |" >> $GITHUB_STEP_SUMMARY
+          echo "| Scope | $AUDIT_SCOPE |" >> $GITHUB_STEP_SUMMARY
+          echo "| SCIP Index | $GENERATE_SCIP |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Generated Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          ls ${{ env.AUDIT_DIR }}/${{ env.COMMIT_SHORT }}/ | while read f; do
+          ls "$AUDIT_DIR_PATH/$COMMIT_SHORT_VAL/" | while read f; do
             echo "- \`$f\`" >> $GITHUB_STEP_SUMMARY
           done
