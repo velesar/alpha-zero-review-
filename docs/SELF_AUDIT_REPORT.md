@@ -245,32 +245,57 @@ cargo fmt --check
 
 ---
 
-## VP-S01: Module Hierarchy
+## VP-S01: Module Hierarchy (Detailed)
 
 ### Workspace Members
-1. **mental-model-server** - Central artifact management
-2. **methodology-kb-server** - Knowledge base access
-3. **sarif-tools-server** - Analysis tool integration
-4. **codegraph-server** - Code intelligence
+
+| Crate | Purpose | Modules | LOC |
+|-------|---------|---------|-----|
+| mental-model-server | Central artifact management | 7 | ~2,800 |
+| methodology-kb-server | Knowledge base access | 7 | ~1,800 |
+| sarif-tools-server | Analysis tool integration | 8 | ~2,500 |
+| codegraph-server | Code intelligence | 5 | ~1,200 |
 
 ### Module Structure (per server)
+
 ```
-<server>/
-├── main.rs        # Entry point, CLI
-├── lib.rs         # Public API exports
-├── server.rs      # MCP handler implementation
-├── ops.rs         # Business operations
-├── error.rs       # Error types
-├── utils.rs       # Utilities
-└── <domain>.rs    # Domain-specific modules
+<server>/src/
+├── main.rs        # Entry point, CLI (clap)
+├── lib.rs         # Public module exports
+├── server.rs      # MCP handler (ServerHandler trait)
+├── ops.rs         # Business logic operations
+├── error.rs       # Typed errors (thiserror)
+├── utils.rs       # Formatting utilities
+└── <domain>.rs    # Domain-specific modules:
+    ├── mental-model: model.rs, artifacts.rs, findings_store.rs
+    ├── methodology-kb: types.rs, domain.rs, acquisition.rs
+    ├── sarif-tools: sarif.rs, runner.rs, tools/*.rs
+    └── codegraph: graph.rs
+```
+
+### Module Dependencies (Internal)
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     main.rs                             │
+│                        │                                │
+│                        ▼                                │
+│                    server.rs                            │
+│                   /    |    \                           │
+│                  ▼     ▼     ▼                          │
+│              ops.rs  model.rs  utils.rs                 │
+│                 │       │                               │
+│                 ▼       ▼                               │
+│              error.rs (shared error types)              │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ### Circular Dependencies
-**None detected** - Clean dependency graph
+**None detected** - Clean acyclic dependency graph
 
 ---
 
-## VP-S02: Layer Architecture
+## VP-S02: Layer Architecture (Detailed)
 
 ### Pattern: Clean Architecture / Hexagonal
 
@@ -278,22 +303,111 @@ cargo fmt --check
 ┌─────────────────────────────────────────┐
 │              MCP Interface              │
 │         (server.rs - adapters)          │
+│  - Tool handlers with #[tool] macro     │
+│  - Request/Response DTOs                │
+│  - JSON serialization                   │
 ├─────────────────────────────────────────┤
 │           Domain Operations             │
 │              (ops.rs)                   │
+│  - Business logic functions             │
+│  - Severity adjustment algorithms       │
+│  - Synthesis algorithms                 │
 ├─────────────────────────────────────────┤
 │           Domain Models                 │
 │     (model.rs, domain.rs, types.rs)     │
+│  - Core entities (Finding, RootCause)   │
+│  - Value objects (Severity, Risk)       │
+│  - Aggregates (MentalModel)             │
 ├─────────────────────────────────────────┤
 │           Infrastructure                │
 │  (artifacts.rs, findings_store.rs, etc) │
+│  - SQLite persistence (rusqlite)        │
+│  - File system operations               │
+│  - YAML/JSON serialization              │
 └─────────────────────────────────────────┘
 ```
 
 ### Layer Rules
-- MCP layer depends on Domain
-- Domain depends on Infrastructure (for persistence)
-- No reverse dependencies
+| Rule | Status |
+|------|--------|
+| MCP → Domain | ✅ Compliant |
+| Domain → Infrastructure | ✅ Compliant |
+| No Infrastructure → Domain | ✅ Compliant |
+| No MCP → Infrastructure direct | ✅ Compliant |
+
+### Architecture Violations
+**None detected** - Clean layer separation maintained
+
+---
+
+## VP-S05: Interface Surface (Detailed)
+
+### MCP Tool Inventory
+
+**mental-model-server (22 tools):**
+| Tool | Category | ADR |
+|------|----------|-----|
+| init_model | Lifecycle | - |
+| get_model | Query | - |
+| get_model_section | Query | 0005 |
+| update_viewpoint | Mutation | - |
+| get_context | Query | - |
+| get_contexts | Query (batch) | 0005 |
+| get_constraints | Query | - |
+| add_finding | Mutation | - |
+| add_findings | Mutation (batch) | 0005 |
+| get_findings | Query | - |
+| get_findings_by_file | Query | 0007 |
+| get_findings_by_severity | Query | 0007 |
+| get_findings_by_viewpoint | Query | 0007 |
+| get_findings_by_category | Query | 0007 |
+| get_findings_summary | Query | 0007 |
+| export_findings | Export | 0007 |
+| synthesize | Analysis | - |
+| get_completed_viewpoints | Query | - |
+| get_commit_artifacts | Query | - |
+| store_artifact | Mutation | - |
+| get_artifact | Query | - |
+| flush | Lifecycle | 0006 |
+
+**methodology-kb-server (11 tools):**
+| Tool | Category |
+|------|----------|
+| lookup_metric | Query |
+| classify_finding | Analysis |
+| get_thresholds | Query |
+| check_compliance | Analysis |
+| get_template | Query |
+| list_metrics | Query |
+| list_standards | Query |
+| get_category | Query |
+| get_metric_data | Query |
+| get_acquisition_status | Query |
+| list_acquirable_metrics | Query |
+
+**sarif-tools-server (3 tools):**
+| Tool | Category |
+|------|----------|
+| list_available_tools | Query |
+| merge_sarif | Transform |
+| get_tool_config | Query |
+
+**codegraph-server (10 tools):**
+| Tool | Category |
+|------|----------|
+| load_index | Lifecycle |
+| get_symbol_info | Query |
+| get_callers | Query |
+| get_callees | Query |
+| get_impact | Analysis |
+| get_module_deps | Query |
+| get_file_symbols | Query |
+| find_symbol | Query |
+| find_hotspot_symbols | Query |
+
+### Total Interface Surface
+- **46 MCP tools** across 4 servers
+- **12 tools** added through ADRs (0005, 0006, 0007)
 
 ---
 
