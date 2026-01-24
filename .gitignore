@@ -13,3 +13,6 @@ Thumbs.db
 
 # Debug
 *.pdb
+
+# Audit artifacts (generated at runtime)
+.audit/
