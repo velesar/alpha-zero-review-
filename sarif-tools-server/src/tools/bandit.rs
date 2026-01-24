@@ -3,7 +3,7 @@
 //! Runs Bandit Python security analysis with SARIF output.
 
 use crate::domain::{ConfigValue, ToolConfig};
-use crate::runner::{detect_tool, get_tool_version, parse_sarif, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{detect_tool, get_tool_version, parse_sarif, InstallCommand, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::Sarif;
 use std::path::Path;
 use std::process::Command;
@@ -27,6 +27,10 @@ impl ToolRunner for BanditRunner {
 
     fn supported_languages(&self) -> Vec<String> {
         vec!["python".to_string()]
+    }
+
+    fn install_command(&self) -> Option<InstallCommand> {
+        Some(InstallCommand::new("pipx", "bandit"))
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {

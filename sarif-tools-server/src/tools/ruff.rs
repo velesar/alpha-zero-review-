@@ -3,7 +3,7 @@
 //! Runs Ruff Python linter with SARIF output.
 
 use crate::domain::{ConfigValue, ToolConfig};
-use crate::runner::{detect_tool, get_tool_version, parse_sarif_bytes, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{detect_tool, get_tool_version, parse_sarif_bytes, InstallCommand, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::Sarif;
 use std::path::Path;
 use std::process::Command;
@@ -26,6 +26,10 @@ impl ToolRunner for RuffRunner {
 
     fn supported_languages(&self) -> Vec<String> {
         vec!["python".to_string()]
+    }
+
+    fn install_command(&self) -> Option<InstallCommand> {
+        Some(InstallCommand::new("pipx", "ruff"))
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {

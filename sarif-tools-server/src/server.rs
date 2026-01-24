@@ -89,6 +89,22 @@ pub struct GetToolConfigInput {
     pub tool: String,
 }
 
+/// Input for install_tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct InstallToolInput {
+    /// Tool name to install (semgrep, bandit, ruff, trivy)
+    pub tool: String,
+}
+
+/// Output for install_tool
+#[derive(Debug, Serialize)]
+pub struct InstallToolOutput {
+    pub success: bool,
+    pub tool: String,
+    pub message: String,
+    pub install_command: Option<String>,
+}
+
 /// Output for list_available_tools
 #[derive(Debug, Serialize)]
 pub struct ListToolsOutput {
@@ -208,6 +224,73 @@ impl SarifToolsServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let config = ops::get_tool_config(&self.registry, &input.0.tool)?;
         format_json_response(&config)
+    }
+
+    /// Install a code analysis tool
+    #[tool(description = "Install a code analysis tool (semgrep, bandit, ruff). Requires pipx for Python tools.")]
+    async fn install_tool(
+        &self,
+        input: Parameters<InstallToolInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let tool_name = &input.0.tool;
+
+        tracing::info!("Attempting to install tool: {}", tool_name);
+
+        let runner = self.registry.get(tool_name).ok_or_else(|| {
+            rmcp::ErrorData::invalid_params(format!("Unknown tool: {}", tool_name), None)
+        })?;
+
+        // Check if already installed
+        if runner.is_available() {
+            let version = runner.version().unwrap_or_else(|| "unknown".to_string());
+            return format_json_response(&InstallToolOutput {
+                success: true,
+                tool: tool_name.clone(),
+                message: format!("{} is already installed (version: {})", tool_name, version),
+                install_command: None,
+            });
+        }
+
+        // Get install command
+        let install_cmd = runner.install_command().ok_or_else(|| {
+            rmcp::ErrorData::internal_error(
+                format!("{} does not support automatic installation. For clippy: rustup component add clippy", tool_name),
+                None,
+            )
+        })?;
+
+        let cmd_string = install_cmd.to_command_string();
+
+        // Execute installation
+        match install_cmd.execute() {
+            Ok(()) => {
+                // Verify installation
+                if runner.is_available() {
+                    let version = runner.version().unwrap_or_else(|| "unknown".to_string());
+                    format_json_response(&InstallToolOutput {
+                        success: true,
+                        tool: tool_name.clone(),
+                        message: format!("Successfully installed {} (version: {})", tool_name, version),
+                        install_command: Some(cmd_string),
+                    })
+                } else {
+                    format_json_response(&InstallToolOutput {
+                        success: false,
+                        tool: tool_name.clone(),
+                        message: format!("Installation completed but {} is not available in PATH. You may need to restart your shell.", tool_name),
+                        install_command: Some(cmd_string),
+                    })
+                }
+            }
+            Err(e) => {
+                format_json_response(&InstallToolOutput {
+                    success: false,
+                    tool: tool_name.clone(),
+                    message: format!("Installation failed: {}. Try running manually: {}", e, cmd_string),
+                    install_command: Some(cmd_string),
+                })
+            }
+        }
     }
 }
 

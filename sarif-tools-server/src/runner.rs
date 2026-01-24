@@ -51,8 +51,94 @@ pub trait ToolRunner: Send + Sync {
     /// Get supported languages
     fn supported_languages(&self) -> Vec<String>;
 
+    /// Get the install command for this tool (pip, npm, cargo, etc.)
+    fn install_command(&self) -> Option<InstallCommand>;
+
     /// Run the tool on a path
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError>;
+}
+
+/// Install command specification
+#[derive(Debug, Clone)]
+pub struct InstallCommand {
+    /// Package manager (pip, pipx, npm, cargo, brew, apt, etc.)
+    pub manager: String,
+    /// Package name to install
+    pub package: String,
+    /// Additional arguments (e.g., --user, -g)
+    pub args: Vec<String>,
+}
+
+impl InstallCommand {
+    pub fn new(manager: &str, package: &str) -> Self {
+        Self {
+            manager: manager.to_string(),
+            package: package.to_string(),
+            args: vec![],
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn with_args(mut self, args: &[&str]) -> Self {
+        self.args = args.iter().map(|s| s.to_string()).collect();
+        self
+    }
+
+    /// Build the full command string
+    pub fn to_command_string(&self) -> String {
+        let args_str = if self.args.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", self.args.join(" "))
+        };
+
+        match self.manager.as_str() {
+            "pip" => format!("pip install{} {}", args_str, self.package),
+            "pipx" => format!("pipx install {}", self.package),
+            "npm" => format!("npm install{} {}", args_str, self.package),
+            "cargo" => format!("cargo install {}", self.package),
+            "brew" => format!("brew install {}", self.package),
+            "apt" => format!("sudo apt install -y {}", self.package),
+            _ => format!("{} install{} {}", self.manager, args_str, self.package),
+        }
+    }
+
+    /// Execute the install command
+    pub fn execute(&self) -> Result<(), RunnerError> {
+        let (program, args) = match self.manager.as_str() {
+            "pip" => {
+                let mut args = vec!["install".to_string()];
+                args.extend(self.args.clone());
+                args.push(self.package.clone());
+                ("pip".to_string(), args)
+            }
+            "pipx" => ("pipx".to_string(), vec!["install".to_string(), self.package.clone()]),
+            "npm" => {
+                let mut args = vec!["install".to_string()];
+                args.extend(self.args.clone());
+                args.push(self.package.clone());
+                ("npm".to_string(), args)
+            }
+            "cargo" => ("cargo".to_string(), vec!["install".to_string(), self.package.clone()]),
+            _ => return Err(RunnerError::ExecutionFailed(format!("Unknown package manager: {}", self.manager))),
+        };
+
+        tracing::info!("Installing {} via {}: {} {:?}", self.package, self.manager, program, args);
+
+        let output = Command::new(&program)
+            .args(&args)
+            .output()?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(RunnerError::ExecutionFailed(format!(
+                "Install failed: {}",
+                stderr
+            )))
+        }
+    }
 }
 
 /// Check if a tool is available on the system

@@ -3,7 +3,7 @@
 //! Runs cargo clippy and converts JSON output to SARIF format.
 
 use crate::domain::{ConfigValue, ToolConfig};
-use crate::runner::{detect_tool, get_tool_version, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{detect_tool, get_tool_version, InstallCommand, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::{
     ArtifactLocation, Location, Message, PhysicalLocation, Region, Result as SarifResult, Run,
     Sarif, Tool, ToolDriver,
@@ -75,6 +75,12 @@ impl ToolRunner for ClippyRunner {
 
     fn supported_languages(&self) -> Vec<String> {
         vec!["rust".to_string()]
+    }
+
+    fn install_command(&self) -> Option<InstallCommand> {
+        // Clippy is a rustup component, not a standalone install
+        // Return None - user should run: rustup component add clippy
+        None
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {

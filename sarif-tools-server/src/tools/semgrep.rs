@@ -3,7 +3,7 @@
 //! Runs Semgrep static analysis with SARIF output.
 
 use crate::domain::ToolConfig;
-use crate::runner::{detect_tool, get_tool_version, parse_sarif, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{detect_tool, get_tool_version, parse_sarif, InstallCommand, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::Sarif;
 use std::path::Path;
 use std::process::Command;
@@ -31,6 +31,11 @@ impl ToolRunner for SemgrepRunner {
             "ruby", "rust", "c", "cpp", "csharp", "kotlin",
             "scala", "php", "swift", "lua", "ocaml", "r",
         ].into_iter().map(String::from).collect()
+    }
+
+    fn install_command(&self) -> Option<InstallCommand> {
+        // Prefer pipx for isolated install, fallback to pip
+        Some(InstallCommand::new("pipx", "semgrep"))
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {

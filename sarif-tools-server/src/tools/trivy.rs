@@ -3,7 +3,7 @@
 //! Runs Trivy vulnerability scanner with SARIF output.
 
 use crate::domain::{ConfigValue, ToolConfig};
-use crate::runner::{detect_tool, get_tool_version, parse_sarif_bytes, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{detect_tool, get_tool_version, parse_sarif_bytes, InstallCommand, RunnerError, ToolResult, ToolRunner};
 use crate::sarif::Sarif;
 use std::path::Path;
 use std::process::Command;
@@ -30,6 +30,12 @@ impl ToolRunner for TrivyRunner {
             "ruby", "rust", "php", "dotnet",
             "dockerfile", "terraform", "kubernetes", "helm",
         ].into_iter().map(String::from).collect()
+    }
+
+    fn install_command(&self) -> Option<InstallCommand> {
+        // Trivy can be installed via brew on macOS or downloaded from releases
+        // For broad compatibility, recommend brew
+        Some(InstallCommand::new("brew", "trivy"))
     }
 
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError> {

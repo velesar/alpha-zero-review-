@@ -194,10 +194,25 @@ codegraph/get_callers { "symbol_id": "src/db.py#execute_query" }
 ### 4. sarif-tools (For Running Scanners)
 **Purpose:** Run code analysis tools and get SARIF output.
 
+**Check available tools:**
+```
+sarif-tools/list_available_tools {}
+```
+
+**If a tool is not installed, install it:**
+```
+sarif-tools/install_tool { "tool": "semgrep" }
+sarif-tools/install_tool { "tool": "bandit" }
+sarif-tools/install_tool { "tool": "ruff" }
+```
+
+**Run scanners:**
 ```
 sarif-tools/run_tool { "tool": "semgrep", "path": "src/" }
 sarif-tools/run_tool { "tool": "bandit", "path": "src/" }
 ```
+
+**IMPORTANT:** If `run_tool` fails with "Tool not installed", call `install_tool` first, then retry.
 
 ## Audit Workflow
 
