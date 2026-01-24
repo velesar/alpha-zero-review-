@@ -1,8 +1,8 @@
 ---
 name: vp-s01-module-hierarchy
-version: 1.0
+version: 2.0
 dependencies: [vp-f01-tech-stack, vp-f02-structure]
-mcp_servers: [mental-model, methodology-kb]
+mcp_servers: [mental-model, methodology-kb, codegraph]
 ---
 
 # VP-S01: Module Hierarchy Analysis
@@ -13,8 +13,24 @@ Map the module/package hierarchy of the project to understand code organization,
 ## Prerequisites
 - Foundation phase completed (VP-F01, VP-F02, VP-F03)
 - Source roots identified
+- (Optional) SCIP indexes in `.audit/indexes/` for semantic analysis
 
 ## Instructions
+
+### Step 0: Load SCIP Indexes (If Available)
+
+If the project has SCIP indexes (created with `setup-audit --with-index`), load them first:
+
+```
+codegraph/load_project_indexes
+  project_path: "."
+  build_if_missing: false
+```
+
+This enables automated module analysis:
+- `get_module_deps(module_path)` - Get all dependencies of a module
+- `get_file_symbols(file_path)` - Get all exports from a module
+- `find_hotspot_symbols(min_callers)` - Find heavily-imported modules (god modules)
 
 ### Step 1: Verify Prerequisites
 Call `mental-model/get_model` and confirm:
@@ -91,7 +107,31 @@ For each module, identify:
 - What depends on it
 - Internal vs external dependencies
 
-#### Dependency Analysis Methods
+#### Using Codegraph (Preferred if SCIP Index Loaded)
+
+For each major module, use semantic analysis:
+
+```
+# Get dependencies of a module
+codegraph/get_module_deps
+  module_path: "src/module_a"
+
+# Get all exports from a module
+codegraph/get_file_symbols
+  file_path: "src/module_a/mod.rs"
+
+# Find modules with many dependents (god modules)
+codegraph/find_hotspot_symbols
+  min_callers: 10
+  path_filter: "src/"
+```
+
+This provides accurate dependency information:
+- Exact symbol references (not just file-level imports)
+- Caller/callee relationships between functions
+- Detection of unused exports
+
+#### Manual Fallback (Without SCIP Index)
 
 **Python:**
 ```python

@@ -1,8 +1,8 @@
 ---
 name: vp-s02-layer-architecture
-version: 1.0
+version: 2.0
 dependencies: [vp-f01-tech-stack, vp-f02-structure, vp-s01-module-hierarchy]
-mcp_servers: [mental-model, methodology-kb]
+mcp_servers: [mental-model, methodology-kb, codegraph]
 ---
 
 # VP-S02: Layer Architecture Analysis
@@ -13,8 +13,24 @@ Identify the architectural layering pattern used in the project and validate tha
 ## Prerequisites
 - VP-S01 (Module Hierarchy) completed
 - Verify by calling `mental-model/get_model` and confirming module_hierarchy is populated
+- (Optional) SCIP indexes in `.audit/indexes/` for semantic analysis
 
 ## Instructions
+
+### Step 0: Load SCIP Indexes (If Available)
+
+If the project has SCIP indexes (created with `setup-audit --with-index`), load them first:
+
+```
+codegraph/load_project_indexes
+  project_path: "."
+  build_if_missing: false
+```
+
+This enables semantic layer violation detection:
+- `get_callers(symbol_id)` - Find cross-layer dependencies
+- `get_module_deps(module_path)` - Get layer dependencies
+- `find_symbol(pattern)` - Search for symbols in specific layers
 
 ### Step 1: Get Current Context
 Call `mental-model/get_model`, extract:
@@ -91,6 +107,31 @@ Call `methodology-kb/check_compliance` with:
 ```
 
 ### Step 5: Find Layer Violations
+
+#### Using Codegraph (Preferred if SCIP Index Loaded)
+
+For semantic layer violation detection:
+
+```
+# Find what domain layer symbols depend on
+codegraph/get_module_deps
+  module_path: "src/domain"
+
+# Check if domain symbols reference infrastructure
+codegraph/find_symbol
+  pattern: "database"
+
+# For suspicious symbols, trace callers across layers
+codegraph/get_callers
+  symbol_id: "<symbol_from_find>"
+```
+
+This provides:
+- Exact symbol-level cross-layer dependencies
+- Distinction between type-only and runtime violations
+- Full reference chain for each violation
+
+#### Manual Fallback (Without SCIP Index)
 
 Analyze imports/dependencies from VP-S01 to find violations:
 

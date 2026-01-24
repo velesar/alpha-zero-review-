@@ -1,8 +1,8 @@
 ---
 name: vp-s03-domain-model
-version: 1.0
+version: 2.0
 dependencies: [vp-s01-module-hierarchy, vp-s02-layer-architecture]
-mcp_servers: [mental-model, methodology-kb]
+mcp_servers: [mental-model, methodology-kb, codegraph]
 ---
 
 # VP-S03: Domain Model Analysis
@@ -13,8 +13,25 @@ Identify bounded contexts and domain concepts to understand the business domains
 ## Prerequisites
 - VP-S02 (Layer Architecture) completed
 - Layer boundaries identified
+- (Optional) SCIP indexes in `.audit/indexes/` for semantic analysis
 
 ## Instructions
+
+### Step 0: Load SCIP Indexes (If Available)
+
+If the project has SCIP indexes (created with `setup-audit --with-index`), load them first:
+
+```
+codegraph/load_project_indexes
+  project_path: "."
+  build_if_missing: false
+```
+
+This enables semantic domain analysis:
+- `find_symbol(pattern)` - Discover domain entities by name patterns
+- `get_file_symbols(file_path)` - Get all entities in domain files
+- `get_callers(symbol_id)` - Trace entity usage across contexts
+- `get_module_deps(module_path)` - Map context dependencies
 
 ### Step 1: Get Current Context
 Call `mental-model/get_model` and extract:
@@ -78,6 +95,31 @@ For each bounded context, classify as:
 - Examples: Authentication, File storage, Logging
 
 ### Step 4: Identify Domain Entities
+
+#### Using Codegraph (Preferred if SCIP Index Loaded)
+
+Use semantic search to discover domain entities:
+
+```
+# Find all symbols in domain layer
+codegraph/get_file_symbols
+  file_path: "src/domain/orders/mod.rs"
+
+# Search for entity patterns by name
+codegraph/find_symbol
+  pattern: "Order"
+
+# Find aggregate usage patterns
+codegraph/get_callers
+  symbol_id: "<aggregate_root_symbol>"
+```
+
+This helps identify:
+- All types defined in domain layer
+- Which entities are most referenced (aggregate roots)
+- Entity dependencies and relationships
+
+#### Entity Types to Find
 
 Within each bounded context, find:
 
