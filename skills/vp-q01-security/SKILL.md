@@ -84,24 +84,68 @@ For each security finding, call `methodology-kb/classify_finding`:
 
 This returns adjusted severity based on context.
 
-### Step 5: Get Context for Each Finding
+### Step 5: Get Context for Findings (Batch Preferred)
 
-For findings in key files, call `mental-model/get_context`:
+**For multiple findings (preferred - ADR-0005):**
+Call `mental-model/get_contexts` with all file paths:
+```json
+{
+  "file_paths": [
+    "src/domain/auth/handler.py",
+    "src/data/user_repository.py",
+    "src/api/routes.py"
+  ]
+}
+```
+
+**For single finding:**
+Call `mental-model/get_context`:
 ```json
 {
   "file_path": "src/domain/auth/handler.py"
 }
 ```
 
-This provides:
+This provides for each file:
 - Bounded context type (core/supporting/generic)
 - Architecture layer
 - Hotspot status
 
-### Step 6: Add Enriched Findings
+### Step 6: Add Enriched Findings (Batch Preferred)
 
-For each significant finding, call `mental-model/add_finding`:
+**For multiple findings (preferred - ADR-0005):**
+Call `mental-model/add_findings` with all findings at once:
+```json
+{
+  "findings": [
+    {
+      "viewpoint": "VP-Q01",
+      "category": "security_injection",
+      "title": "Potential SQL injection in user query",
+      "description": "User input is concatenated directly into SQL query",
+      "file_path": "src/data/user_repository.py",
+      "line_number": 45,
+      "base_severity": "HIGH",
+      "rule_id": "B608",
+      "recommendation": "Use parameterized queries"
+    },
+    {
+      "viewpoint": "VP-Q01",
+      "category": "security_secrets",
+      "title": "Hardcoded API key",
+      "description": "API key embedded in source code",
+      "file_path": "src/config/settings.py",
+      "line_number": 12,
+      "base_severity": "HIGH",
+      "rule_id": "B105",
+      "recommendation": "Move to environment variables"
+    }
+  ]
+}
+```
 
+**For single finding:**
+Call `mental-model/add_finding`:
 ```json
 {
   "viewpoint": "VP-Q01",

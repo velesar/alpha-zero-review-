@@ -166,9 +166,40 @@ Look for:
 - Missing HTTP cache headers
 - No query result caching
 
-### Step 7: Add Findings
+### Step 7: Add Findings (Batch Preferred)
 
-For each performance issue, call `mental-model/add_finding`:
+**For multiple findings (preferred - ADR-0005):**
+Call `mental-model/add_findings` with all performance findings at once:
+
+```json
+{
+  "findings": [
+    {
+      "viewpoint": "VP-Q02",
+      "category": "performance_database",
+      "title": "N+1 query in user listing",
+      "description": "User orders accessed in loop without eager loading",
+      "file_path": "src/services/user_service.py",
+      "line_number": 78,
+      "base_severity": "MEDIUM",
+      "recommendation": "Use eager loading: query.options(joinedload(User.orders))"
+    },
+    {
+      "viewpoint": "VP-Q02",
+      "category": "performance_algorithm",
+      "title": "O(n²) complexity in search",
+      "description": "Nested loops over same collection",
+      "file_path": "src/utils/matcher.py",
+      "line_number": 45,
+      "base_severity": "MEDIUM",
+      "recommendation": "Use set for O(1) lookup"
+    }
+  ]
+}
+```
+
+**For single finding:**
+Call `mental-model/add_finding`:
 
 ```json
 {

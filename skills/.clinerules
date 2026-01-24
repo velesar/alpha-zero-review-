@@ -77,18 +77,18 @@ rules:
     trigger: "finding|issue|vulnerability|problem|bug"
     priority: 2
     instruction: |
-      When adding any finding from quality analysis:
+      When adding findings from quality analysis, prefer batch operations (ADR-0005):
 
-      1. First call mental-model/get_context with the file path
-         to get bounded context type, layer, and hotspot status
+      **For multiple findings (preferred):**
+      1. Collect all file paths from findings
+      2. Call mental-model/get_contexts with all paths at once
+      3. Call methodology-kb/classify_finding for each finding
+      4. Call mental-model/add_findings with all enriched findings
 
-      2. Then call methodology-kb/classify_finding with the context
-         to get adjusted severity based on business impact
-
-      3. Finally call mental-model/add_finding with:
-         - All finding details
-         - The adjusted (not base) severity
-         - Context information for explanation
+      **For single finding:**
+      1. Call mental-model/get_context with the file path
+      2. Call methodology-kb/classify_finding with the context
+      3. Call mental-model/add_finding with enriched data
 
       NEVER report raw tool output. Always enrich with context.
 

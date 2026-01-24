@@ -74,7 +74,7 @@ Beta-Zero = Alpha-Zero + 2 нових MCP servers + розширення існ�
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  mental-model-server                                                    │
-│  [Alpha-Zero: exists] + [Beta-Zero: artifact store extensions]         │
+│  [Alpha-Zero: exists] + [Beta-Zero: artifact store + batch ops]        │
 │                                                                         │
 │  Existing tools:                                                        │
 │  ├── init_model                                                        │
@@ -91,6 +91,11 @@ Beta-Zero = Alpha-Zero + 2 нових MCP servers + розширення існ�
 │  ├── get_commit_artifacts(commit) → available[], missing[]             │
 │  ├── store_artifact(commit, type, data)                                │
 │  └── get_artifact(commit, type) → data, metadata                       │
+│                                                                         │
+│  NEW tools (Batch Operations - ADR-0005):                              │
+│  ├── add_findings(findings[]) → batch add with single save             │
+│  ├── get_contexts(file_paths[]) → batch context retrieval              │
+│  └── get_model_section(section) → selective model retrieval            │
 │                                                                         │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  methodology-kb-server                                                  │

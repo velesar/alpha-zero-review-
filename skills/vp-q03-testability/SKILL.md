@@ -175,9 +175,39 @@ Call `methodology-kb/get_thresholds`:
 
 Compare coverage against thresholds.
 
-### Step 9: Add Findings
+### Step 9: Add Findings (Batch Preferred)
 
-For testability issues, call `mental-model/add_finding`:
+**For multiple findings (preferred - ADR-0005):**
+Call `mental-model/add_findings` with all testability findings at once:
+
+```json
+{
+  "findings": [
+    {
+      "viewpoint": "VP-Q03",
+      "category": "testability_coverage",
+      "title": "Critical hotspot lacks test coverage",
+      "description": "order_service.py is a critical hotspot (score: 85) but has only 23% test coverage",
+      "file_path": "src/services/order_service.py",
+      "base_severity": "HIGH",
+      "recommendation": "Add unit tests for order processing logic, especially error paths"
+    },
+    {
+      "viewpoint": "VP-Q03",
+      "category": "testability_coupling",
+      "title": "Hidden dependency prevents unit testing",
+      "description": "PaymentService instantiated directly in order handler",
+      "file_path": "src/handlers/order_handler.py",
+      "line_number": 45,
+      "base_severity": "MEDIUM",
+      "recommendation": "Inject PaymentService dependency through constructor"
+    }
+  ]
+}
+```
+
+**For single finding:**
+Call `mental-model/add_finding`:
 
 ```json
 {
@@ -188,19 +218,6 @@ For testability issues, call `mental-model/add_finding`:
   "file_path": "src/services/order_service.py",
   "base_severity": "HIGH",
   "recommendation": "Add unit tests for order processing logic, especially error paths"
-}
-```
-
-```json
-{
-  "viewpoint": "VP-Q03",
-  "category": "testability_coupling",
-  "title": "Hidden dependency prevents unit testing",
-  "description": "PaymentService instantiated directly in order handler, preventing isolation testing",
-  "file_path": "src/handlers/order_handler.py",
-  "line_number": 45,
-  "base_severity": "MEDIUM",
-  "recommendation": "Inject PaymentService dependency through constructor or parameter"
 }
 ```
 

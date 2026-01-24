@@ -56,15 +56,20 @@ Manages the central mental model artifact and commit-indexed artifact storage.
 |------|-------------|
 | `init_model` | Initialize new mental model for project |
 | `get_model` | Get current model state as YAML |
+| `get_model_section` | Get specific section only ⚡ |
 | `update_viewpoint` | Update with viewpoint results |
 | `get_context` | Get business context for a file |
+| `get_contexts` | Batch get context for multiple files ⚡ |
 | `get_constraints` | Get derived analysis constraints |
 | `add_finding` | Add finding with context enrichment |
+| `add_findings` | Batch add multiple findings ⚡ |
 | `get_findings` | Get all findings |
 | `synthesize` | Cluster findings into root causes |
 | `store_artifact` | Store SARIF/SCIP artifact for commit |
 | `get_artifact` | Retrieve stored artifact |
 | `get_commit_artifacts` | List available artifacts for commit |
+
+*⚡ Batch operations (ADR-0005) - prefer these for efficiency*
 
 ### methodology-kb-server
 Knowledge base for metrics, thresholds, and standards.

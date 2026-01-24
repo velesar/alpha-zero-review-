@@ -595,13 +595,18 @@ VP-F03 Build/Deploy  VP-S03 Domain          VP-Q03 Testability
 |------|---------|
 | `init_model` | Initialize new audit |
 | `get_model` | Retrieve current state |
+| `get_model_section` | Retrieve specific section only ⚡ |
 | `update_viewpoint` | Save viewpoint results |
 | `get_context` | Get file context for findings |
+| `get_contexts` | Get context for multiple files ⚡ |
 | `get_constraints` | Get priority paths |
 | `add_finding` | Add individual finding |
+| `add_findings` | Add multiple findings (batch) ⚡ |
 | `get_findings` | Retrieve all findings |
 | `synthesize` | Generate root causes |
 | `get_completed_viewpoints` | List completed viewpoints |
+
+*⚡ Batch operations (ADR-0005) - prefer these for efficiency*
 
 **methodology-kb-server:**
 | Tool | Purpose |

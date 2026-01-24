@@ -76,7 +76,14 @@ Before starting any audit:
 2. Verify initialization succeeded before proceeding
 
 ### Rule 2: Context-Aware Findings
-When adding any finding:
+When adding findings, prefer batch operations for efficiency (ADR-0005):
+
+**For multiple findings (preferred):**
+1. Collect all file paths from findings
+2. Call `mental-model/get_contexts` with all paths (batch)
+3. Call `mental-model/add_findings` with all enriched findings (batch)
+
+**For single finding:**
 1. Call `mental-model/get_context` with file path
 2. Call `methodology-kb/classify_finding` with context for adjusted severity
 3. Call `mental-model/add_finding` with enriched data
@@ -127,16 +134,21 @@ Read skills/vp-f01-tech-stack/SKILL.md and follow its instructions
 ### mental-model server
 - `init_model(name, path, description?)` - Initialize new mental model
 - `get_model()` - Get current model state as YAML
+- `get_model_section(section)` - Get specific section only (ADR-0005) ⚡
 - `update_viewpoint(viewpoint, data)` - Update with viewpoint results
 - `get_context(file_path)` - Get business context for a file
+- `get_contexts(file_paths[])` - Batch get context for multiple files (ADR-0005) ⚡
 - `get_constraints()` - Get derived analysis constraints
 - `add_finding(viewpoint, category, title, description, file_path, base_severity, ...)` - Add finding
+- `add_findings(findings[])` - Batch add multiple findings (ADR-0005) ⚡
 - `get_findings()` - Get all findings
 - `synthesize(algorithm?)` - Cluster findings into root causes
 - `get_completed_viewpoints()` - List completed viewpoints
 - `get_commit_artifacts(commit?)` - List available/missing artifacts for commit (HEAD/latest supported)
 - `store_artifact(commit, type, data, producer)` - Store SARIF/SCIP artifact for commit
 - `get_artifact(commit?, type)` - Retrieve stored artifact
+
+*⚡ Batch operations (ADR-0005) - prefer these for efficiency*
 
 ### methodology-kb server
 - `lookup_metric(metric, project_type?)` - Get metric definition and thresholds
