@@ -19,6 +19,7 @@ An ADR is a document that captures an important architectural decision made alon
 | [0002](0002-mcp-protocol.md) | MCP Protocol for Tool Interface | Accepted | 2026-01-23 |
 | [0003](0003-workspace-architecture.md) | Workspace-Based Modular Architecture | Accepted | 2026-01-23 |
 | [0004](0004-sarif-output.md) | SARIF as Standard Output Format | Accepted | 2026-01-23 |
+| [0005](0005-batch-operations.md) | Batch Operations for Mental Model Server | Accepted | 2026-01-24 |
 
 ## Creating New ADRs
 

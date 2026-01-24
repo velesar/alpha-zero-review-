@@ -81,6 +81,50 @@ fn default_algorithm() -> String {
     "category_based".to_string()
 }
 
+/// Single finding input for batch operations
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FindingInput {
+    /// Viewpoint that generated this finding
+    pub viewpoint: String,
+    /// Finding category (security, reliability, maintainability, etc.)
+    pub category: String,
+    /// Short title of the finding
+    pub title: String,
+    /// Detailed description
+    pub description: String,
+    /// File path where the finding was detected
+    pub file_path: String,
+    /// Line number (optional)
+    pub line_number: Option<u32>,
+    /// Base severity before context adjustment
+    pub base_severity: String,
+    /// Rule ID from the tool that detected it (optional)
+    pub rule_id: Option<String>,
+    /// Recommendation for fixing (optional)
+    pub recommendation: Option<String>,
+}
+
+/// Input for add_findings batch tool (ADR-0005)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AddFindingsInput {
+    /// List of findings to add
+    pub findings: Vec<FindingInput>,
+}
+
+/// Input for get_contexts batch tool (ADR-0005)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetContextsInput {
+    /// List of file paths to get context for
+    pub file_paths: Vec<String>,
+}
+
+/// Input for get_model_section tool (ADR-0005)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetModelSectionInput {
+    /// Section to retrieve
+    pub section: String,
+}
+
 /// Input for init_model tool
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct InitModelInput {
@@ -492,6 +536,142 @@ impl MentalModelServer {
 
         let json = serde_json::to_string_pretty(&output)
             .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    // ========== Batch Operations (ADR-0005) ==========
+
+    /// Add multiple findings in a single operation
+    #[tool(description = "Add multiple findings from quality analysis in a single batch operation. Each finding will be automatically enriched with context and severity adjusted. More efficient than multiple add_finding calls. (ADR-0005)")]
+    async fn add_findings(&self, input: Parameters<AddFindingsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+        let mut model = self.model.write().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+        })?;
+
+        let mut added_findings = Vec::new();
+        let mut viewpoints_touched = std::collections::HashSet::new();
+
+        for finding_input in input.findings {
+            // Parse base severity
+            let base_severity = match finding_input.base_severity.to_uppercase().as_str() {
+                "CRITICAL" => Severity::Critical,
+                "HIGH" => Severity::High,
+                "MEDIUM" => Severity::Medium,
+                "LOW" => Severity::Low,
+                _ => Severity::Info,
+            };
+
+            // Get context for the file
+            let context = model.get_context_for_path(&finding_input.file_path);
+
+            // Calculate adjusted severity
+            let adjusted_severity = adjust_severity(&base_severity, &context);
+
+            let finding = Finding {
+                id: format!("F-{}", Uuid::new_v4().to_string()[..8].to_uppercase()),
+                viewpoint: finding_input.viewpoint.clone(),
+                category: finding_input.category,
+                title: finding_input.title,
+                description: finding_input.description,
+                file_path: finding_input.file_path,
+                line_number: finding_input.line_number,
+                base_severity,
+                adjusted_severity,
+                rule_id: finding_input.rule_id,
+                context: Some(context),
+                recommendation: finding_input.recommendation,
+            };
+
+            viewpoints_touched.insert(finding_input.viewpoint);
+            added_findings.push(finding.clone());
+            model.findings.push(finding);
+        }
+
+        // Mark viewpoints as having findings
+        for vp in viewpoints_touched {
+            if !model.completed_viewpoints.contains(&vp) {
+                model.completed_viewpoints.push(vp);
+            }
+        }
+
+        let added_count = added_findings.len();
+
+        drop(model);
+        // Single save for all findings
+        self.save_model().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
+        })?;
+
+        let json = serde_json::to_string_pretty(&added_findings).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Added {} findings in batch\n\n{}",
+            added_count, json
+        ))]))
+    }
+
+    /// Get context for multiple file paths in a single operation
+    #[tool(description = "Get business context for multiple file paths in a single batch operation. Returns a map of file paths to their context (bounded context type, architecture layer, hotspot status). More efficient than multiple get_context calls. (ADR-0005)")]
+    async fn get_contexts(&self, input: Parameters<GetContextsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+        let model = self.model.read().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+        })?;
+
+        let mut contexts: HashMap<String, FindingContext> = HashMap::new();
+
+        for file_path in input.file_paths {
+            let context = model.get_context_for_path(&file_path);
+            contexts.insert(file_path, context);
+        }
+
+        let json = serde_json::to_string_pretty(&contexts).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Get a specific section of the mental model
+    #[tool(description = "Get a specific section of the mental model instead of the full model. Sections: project, tech_stack, structure, build_deploy, module_hierarchy, architecture, domain_model, entity_model, interface_surface, hotspots, constraints, findings, root_causes, completed_viewpoints. More efficient than get_model when only one section is needed. (ADR-0005)")]
+    async fn get_model_section(&self, input: Parameters<GetModelSectionInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+        let model = self.model.read().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+        })?;
+
+        let section_json: serde_json::Value = match input.section.as_str() {
+            "project" => serde_json::to_value(&model.project),
+            "tech_stack" => serde_json::to_value(&model.tech_stack),
+            "structure" => serde_json::to_value(&model.structure),
+            "build_deploy" => serde_json::to_value(&model.build_deploy),
+            "module_hierarchy" => serde_json::to_value(&model.module_hierarchy),
+            "architecture" => serde_json::to_value(&model.architecture),
+            "domain_model" => serde_json::to_value(&model.domain_model),
+            "entity_model" => serde_json::to_value(&model.entity_model),
+            "interface_surface" => serde_json::to_value(&model.interface_surface),
+            "hotspots" => serde_json::to_value(&model.hotspots),
+            "constraints" => serde_json::to_value(&model.constraints),
+            "findings" => serde_json::to_value(&model.findings),
+            "root_causes" => serde_json::to_value(&model.root_causes),
+            "completed_viewpoints" => serde_json::to_value(&model.completed_viewpoints),
+            _ => {
+                return Err(rmcp::ErrorData::invalid_params(
+                    format!("Unknown section: '{}'. Valid sections: project, tech_stack, structure, build_deploy, module_hierarchy, architecture, domain_model, entity_model, interface_surface, hotspots, constraints, findings, root_causes, completed_viewpoints", input.section),
+                    None,
+                ));
+            }
+        }.map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        let json = serde_json::to_string_pretty(&section_json).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
