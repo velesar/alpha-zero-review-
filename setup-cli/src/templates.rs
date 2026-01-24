@@ -10,8 +10,7 @@ pub fn mcp_json(agent_dir: &Path, target_dir: &Path) -> String {
             "mental-model": {
                 "command": agent_dir.join("target/release/mental-model-server").to_string_lossy(),
                 "args": [
-                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy(),
-                    "--audit-path", target_dir.join(".audit").to_string_lossy()
+                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy()
                 ]
             },
             "methodology-kb": {
@@ -34,41 +33,57 @@ pub fn mcp_json(agent_dir: &Path, target_dir: &Path) -> String {
     serde_json::to_string_pretty(&config).unwrap()
 }
 
-/// Generate codex.json for Codex CLI
-pub fn codex_json(agent_dir: &Path, target_dir: &Path) -> String {
-    let config = json!({
-        "name": "AI Code Audit Agent",
-        "version": "2.0",
-        "mcp_servers": {
-            "mental-model": {
-                "command": agent_dir.join("target/release/mental-model-server").to_string_lossy(),
-                "args": [
-                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy(),
-                    "--audit-path", target_dir.join(".audit").to_string_lossy()
-                ],
-                "transport": "stdio"
-            },
-            "methodology-kb": {
-                "command": agent_dir.join("target/release/methodology-kb-server").to_string_lossy(),
-                "args": [
-                    "--kb-path", agent_dir.join("methodology_kb/").to_string_lossy()
-                ],
-                "transport": "stdio"
-            },
-            "sarif-tools": {
-                "command": agent_dir.join("target/release/sarif-tools-server").to_string_lossy(),
-                "args": [],
-                "transport": "stdio"
-            },
-            "codegraph": {
-                "command": agent_dir.join("target/release/codegraph-server").to_string_lossy(),
-                "args": [],
-                "transport": "stdio"
-            }
-        }
-    });
+/// MCP server configuration for Codex CLI
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct CodexMcpServer {
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+}
 
-    serde_json::to_string_pretty(&config).unwrap()
+/// Generate MCP server configs for Codex CLI (to be merged into ~/.codex/config.toml)
+pub fn codex_mcp_servers(agent_dir: &Path, target_dir: &Path) -> std::collections::HashMap<String, CodexMcpServer> {
+    let mut servers = std::collections::HashMap::new();
+
+    servers.insert(
+        "mental-model".to_string(),
+        CodexMcpServer {
+            command: agent_dir.join("target/release/mental-model-server").to_string_lossy().to_string(),
+            args: vec![
+                "--model-path".to_string(),
+                target_dir.join(".audit/mental_model.yaml").to_string_lossy().to_string(),
+            ],
+        },
+    );
+
+    servers.insert(
+        "methodology-kb".to_string(),
+        CodexMcpServer {
+            command: agent_dir.join("target/release/methodology-kb-server").to_string_lossy().to_string(),
+            args: vec![
+                "--kb-path".to_string(),
+                agent_dir.join("methodology_kb/").to_string_lossy().to_string(),
+            ],
+        },
+    );
+
+    servers.insert(
+        "sarif-tools".to_string(),
+        CodexMcpServer {
+            command: agent_dir.join("target/release/sarif-tools-server").to_string_lossy().to_string(),
+            args: vec![],
+        },
+    );
+
+    servers.insert(
+        "codegraph".to_string(),
+        CodexMcpServer {
+            command: agent_dir.join("target/release/codegraph-server").to_string_lossy().to_string(),
+            args: vec![],
+        },
+    );
+
+    servers
 }
 
 /// Generate .cline/mcp_settings.json
@@ -78,8 +93,7 @@ pub fn cline_mcp_settings(agent_dir: &Path, target_dir: &Path) -> String {
             "mental-model": {
                 "command": agent_dir.join("target/release/mental-model-server").to_string_lossy(),
                 "args": [
-                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy(),
-                    "--audit-path", target_dir.join(".audit").to_string_lossy()
+                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy()
                 ],
                 "disabled": false
             },

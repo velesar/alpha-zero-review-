@@ -284,7 +284,8 @@ fn print_completion(
                 println!("║    • .mcp.json + CLAUDE.md      (Claude CLI)                  ║");
             }
             CliTool::Codex => {
-                println!("║    • codex.json + AGENTS.md     (Codex CLI)                   ║");
+                println!("║    • ~/.codex/config.toml       (Codex CLI MCP servers)       ║");
+                println!("║    • AGENTS.md                  (Codex instructions)          ║");
             }
             CliTool::Cline => {
                 println!("║    • .cline/ + .clinerules      (Cline VS Code)               ║");

@@ -94,6 +94,13 @@ pub struct CheckComplianceInput {
     pub detected_pattern: serde_json::Value,
 }
 
+/// Input for get_category tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetCategoryInput {
+    /// Category name (e.g., "security", "performance", "maintainability")
+    pub category: String,
+}
+
 /// Input for get_template tool
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetTemplateInput {
@@ -531,8 +538,8 @@ impl MethodologyKBServer {
 
     /// Get category information
     #[tool(description = "Get detailed information about a finding category.")]
-    async fn get_category(&self, category: Parameters<String>) -> Result<CallToolResult, rmcp::ErrorData> {
-        let category = category.0;
+    async fn get_category(&self, input: Parameters<GetCategoryInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let category = input.0.category;
         let cat = self.kb.categories.get(&category);
 
         if let Some(cat) = cat {

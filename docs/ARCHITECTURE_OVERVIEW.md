@@ -750,7 +750,7 @@ setup-audit /path/to/project --clean            # remove existing configs
 | Tool | Config Files | Instruction Files |
 |------|--------------|-------------------|
 | Claude | `.mcp.json` | `CLAUDE.md` (copied) |
-| Codex | `codex.json` | `AGENTS.md` |
+| Codex | `~/.codex/config.toml` | `AGENTS.md` |
 | Cline | `.cline/mcp_settings.json` | `.clinerules` |
 
 ---
