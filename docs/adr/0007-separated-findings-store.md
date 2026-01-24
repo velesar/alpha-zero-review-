@@ -1,6 +1,6 @@
 # ADR-0007: Separated Findings Store with SQLite Backend
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-01-24
 **Deciders:** Architecture Review
 

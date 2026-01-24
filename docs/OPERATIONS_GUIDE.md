@@ -603,12 +603,20 @@ VP-F03 Build/Deploy  VP-S03 Domain          VP-Q03 Testability
 | `add_finding` | Add individual finding |
 | `add_findings` | Add multiple findings (batch) ⚡ |
 | `get_findings` | Retrieve all findings |
+| `get_findings_by_file` | Query findings by file path 🔍 |
+| `get_findings_by_severity` | Query findings by severity 🔍 |
+| `get_findings_by_viewpoint` | Query findings by viewpoint 🔍 |
+| `get_findings_by_category` | Query findings by category 🔍 |
+| `get_findings_summary` | Get finding statistics 🔍 |
+| `export_findings` | Export findings to JSON 📤 |
 | `synthesize` | Generate root causes |
 | `get_completed_viewpoints` | List completed viewpoints |
 | `flush` | Persist pending changes to disk 💾 |
 
 *⚡ Batch operations (ADR-0005) - prefer these for efficiency*
 *💾 Deferred persistence (ADR-0006) - auto-flushes at phase boundaries*
+*🔍 Query tools (ADR-0007) - findings stored in SQLite for fast queries*
+*📤 Export (ADR-0007) - export findings to JSON for external tools*
 
 **methodology-kb-server:**
 | Tool | Purpose |

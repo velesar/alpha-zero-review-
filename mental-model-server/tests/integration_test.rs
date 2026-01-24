@@ -18,7 +18,8 @@ fn test_mental_model_initialization() {
     assert_eq!(model.project.name, "test-project");
     assert_eq!(model.project.path, "/test/path");
     assert_eq!(model.version, "1.0");
-    assert!(model.findings.is_empty());
+    // ADR-0007: findings are now in SQLite store, not in model
+    assert!(model.root_causes.is_empty());
     assert!(model.completed_viewpoints.is_empty());
 }
 

@@ -369,6 +369,7 @@ pub struct Constraints {
 }
 
 /// Complete Mental Model
+/// Note: Findings are stored separately in SQLite (ADR-0007)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MentalModel {
     pub version: String,
@@ -393,8 +394,7 @@ pub struct MentalModel {
     pub hotspots: Hotspots,
     #[serde(default)]
     pub constraints: Constraints,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub findings: Vec<Finding>,
+    // ADR-0007: Findings moved to separate SQLite store (findings_store.rs)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub root_causes: Vec<RootCause>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -422,7 +422,7 @@ impl Default for MentalModel {
             interface_surface: InterfaceSurface::default(),
             hotspots: Hotspots::default(),
             constraints: Constraints::default(),
-            findings: Vec::new(),
+            // ADR-0007: findings stored in separate SQLite store
             root_causes: Vec::new(),
             completed_viewpoints: Vec::new(),
         }

@@ -4,6 +4,7 @@
 //! providing tools for reading, updating, and querying the model.
 
 use crate::artifacts::{ArtifactStore, AvailableArtifact, StoreArtifactMetadata};
+use crate::findings_store::FindingsStore;
 use crate::model::{derive_constraints, Finding, FindingContext, MentalModel, RootCause, Severity};
 use anyhow::Result;
 use std::future::Future;
@@ -19,17 +20,31 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use uuid::Uuid;
 
 /// Mental Model MCP Server
-#[derive(Clone)]
 pub struct MentalModelServer {
     model_path: PathBuf,
     model: Arc<RwLock<MentalModel>>,
+    findings_store: Arc<Mutex<FindingsStore>>,  // ADR-0007: separate findings storage
     artifact_store: Arc<ArtifactStore>,
     dirty: Arc<AtomicBool>,  // ADR-0006: tracks unsaved changes
     tool_router: ToolRouter<Self>,
+}
+
+// Manual Clone implementation since FindingsStore contains SQLite Connection
+impl Clone for MentalModelServer {
+    fn clone(&self) -> Self {
+        Self {
+            model_path: self.model_path.clone(),
+            model: Arc::clone(&self.model),
+            findings_store: Arc::clone(&self.findings_store),
+            artifact_store: Arc::clone(&self.artifact_store),
+            dirty: Arc::clone(&self.dirty),
+            tool_router: Self::tool_router(),
+        }
+    }
 }
 
 /// Input for update_viewpoint tool
@@ -127,6 +142,43 @@ pub struct GetModelSectionInput {
     pub section: String,
 }
 
+// ========== Findings Query Input Types (ADR-0007) ==========
+
+/// Input for get_findings_by_file tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetFindingsByFileInput {
+    /// File path to filter by (exact match or prefix)
+    pub file_path: String,
+}
+
+/// Input for get_findings_by_severity tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetFindingsBySeverityInput {
+    /// Severity level (critical, high, medium, low, info)
+    pub severity: String,
+}
+
+/// Input for get_findings_by_viewpoint tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetFindingsByViewpointInput {
+    /// Viewpoint ID (e.g., "VP-Q01", "VP-Q02")
+    pub viewpoint: String,
+}
+
+/// Input for get_findings_by_category tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetFindingsByCategoryInput {
+    /// Category to filter by (security, reliability, maintainability, etc.)
+    pub category: String,
+}
+
+/// Input for export_findings tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExportFindingsInput {
+    /// Output file path for JSON export
+    pub output_path: String,
+}
+
 /// Input for init_model tool
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct InitModelInput {
@@ -222,9 +274,15 @@ impl MentalModelServer {
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
         };
 
+        // ADR-0007: Create findings store in .audit directory
+        let findings_db_path = project_path.join(".audit").join("findings.db");
+        let findings_store = FindingsStore::new(&findings_db_path)
+            .expect("Failed to create findings store");
+
         Self {
             model_path,
             model: Arc::new(RwLock::new(model)),
+            findings_store: Arc::new(Mutex::new(findings_store)),
             artifact_store: Arc::new(ArtifactStore::new(project_path)),
             dirty: Arc::new(AtomicBool::new(false)),  // ADR-0006
             tool_router: Self::tool_router(),
@@ -402,7 +460,15 @@ impl MentalModelServer {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
-        model.findings.push(finding);
+        // ADR-0007: Store finding in SQLite database
+        {
+            let store = self.findings_store.lock().map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+            })?;
+            store.add(&finding).map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Failed to add finding: {}", e), None)
+            })?;
+        }
 
         // Mark viewpoint as having findings
         if !model.completed_viewpoints.contains(&input.viewpoint) {
@@ -410,29 +476,34 @@ impl MentalModelServer {
         }
 
         drop(model);
-        // ADR-0006: Defer persistence - will flush at next phase boundary
+        // ADR-0006: Defer persistence for model (findings already persisted to SQLite)
         self.mark_dirty();
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Finding added with adjusted severity: {:?} (pending flush)\n\n{}",
+            "Finding added with adjusted severity: {:?}\n\n{}",
             adjusted_severity, finding_json
         ))]))
     }
 
-    /// Get all findings from the model
+    /// Get all findings from the store
     #[tool(description = "Get all findings from quality analysis viewpoints.")]
     async fn get_findings(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        let model = self.model.read().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+        // ADR-0007: Get findings from SQLite store
+        let store = self.findings_store.lock().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
         })?;
 
-        let json = serde_json::to_string_pretty(&model.findings).map_err(|e| {
+        let findings = store.get_all().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Failed to get findings: {}", e), None)
+        })?;
+
+        let json = serde_json::to_string_pretty(&findings).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Total findings: {}\n\n{}",
-            model.findings.len(),
+            findings.len(),
             json
         ))]))
     }
@@ -441,16 +512,27 @@ impl MentalModelServer {
     #[tool(description = "Cluster findings into root causes. This analyzes patterns across findings to identify underlying issues.")]
     async fn synthesize(&self, input: Parameters<SynthesizeInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
+
+        // ADR-0007: Get findings from SQLite store
+        let findings = {
+            let store = self.findings_store.lock().map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+            })?;
+            store.get_all().map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Failed to get findings: {}", e), None)
+            })?
+        };
+
+        let root_causes = match input.algorithm.as_str() {
+            "category_based" => synthesize_by_category(&findings),
+            "location_based" => synthesize_by_location(&findings),
+            _ => synthesize_by_category(&findings),
+        };
+
+        // Store root causes in model
         let mut model = self.model.write().map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
-
-        let root_causes = match input.algorithm.as_str() {
-            "category_based" => synthesize_by_category(&model.findings),
-            "location_based" => synthesize_by_location(&model.findings),
-            _ => synthesize_by_category(&model.findings),
-        };
-
         model.root_causes = root_causes.clone();
 
         drop(model);
@@ -614,8 +696,17 @@ impl MentalModelServer {
             };
 
             viewpoints_touched.insert(finding_input.viewpoint);
-            added_findings.push(finding.clone());
-            model.findings.push(finding);
+            added_findings.push(finding);
+        }
+
+        // ADR-0007: Store findings in SQLite database (batch operation)
+        {
+            let store = self.findings_store.lock().map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+            })?;
+            store.add_batch(&added_findings).map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Failed to add findings: {}", e), None)
+            })?;
         }
 
         // Mark viewpoints as having findings
@@ -628,7 +719,7 @@ impl MentalModelServer {
         let added_count = added_findings.len();
 
         drop(model);
-        // ADR-0006: Defer persistence - will flush at next phase boundary
+        // ADR-0006: Defer persistence for model (findings already persisted to SQLite)
         self.mark_dirty();
 
         let json = serde_json::to_string_pretty(&added_findings).map_err(|e| {
@@ -636,7 +727,7 @@ impl MentalModelServer {
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Added {} findings in batch (pending flush)\n\n{}",
+            "Added {} findings in batch\n\n{}",
             added_count, json
         ))]))
     }
@@ -667,6 +758,21 @@ impl MentalModelServer {
     #[tool(description = "Get a specific section of the mental model instead of the full model. Sections: project, tech_stack, structure, build_deploy, module_hierarchy, architecture, domain_model, entity_model, interface_surface, hotspots, constraints, findings, root_causes, completed_viewpoints. More efficient than get_model when only one section is needed. (ADR-0005)")]
     async fn get_model_section(&self, input: Parameters<GetModelSectionInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
+
+        // ADR-0007: Handle findings section separately from FindingsStore
+        if input.section == "findings" {
+            let store = self.findings_store.lock().map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+            })?;
+            let findings = store.get_all().map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Failed to get findings: {}", e), None)
+            })?;
+            let json = serde_json::to_string_pretty(&findings).map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+            })?;
+            return Ok(CallToolResult::success(vec![Content::text(json)]));
+        }
+
         let model = self.model.read().map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
         })?;
@@ -683,7 +789,6 @@ impl MentalModelServer {
             "interface_surface" => serde_json::to_value(&model.interface_surface),
             "hotspots" => serde_json::to_value(&model.hotspots),
             "constraints" => serde_json::to_value(&model.constraints),
-            "findings" => serde_json::to_value(&model.findings),
             "root_causes" => serde_json::to_value(&model.root_causes),
             "completed_viewpoints" => serde_json::to_value(&model.completed_viewpoints),
             _ => {
@@ -721,6 +826,146 @@ impl MentalModelServer {
         Ok(CallToolResult::success(vec![Content::text(format!(
             "{{\"flushed\": {}, \"message\": \"{}\"}}",
             flushed, message
+        ))]))
+    }
+
+    // ========== Findings Query Tools (ADR-0007) ==========
+
+    /// Get findings by file path
+    #[tool(description = "Get findings filtered by file path. Returns all findings for files matching the given path. (ADR-0007)")]
+    async fn get_findings_by_file(&self, input: Parameters<GetFindingsByFileInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+        let store = self.findings_store.lock().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+        })?;
+
+        let findings = store.get_by_file(&input.file_path).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Failed to query findings: {}", e), None)
+        })?;
+
+        let json = serde_json::to_string_pretty(&findings).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Found {} findings for file path '{}'\n\n{}",
+            findings.len(), input.file_path, json
+        ))]))
+    }
+
+    /// Get findings by severity level
+    #[tool(description = "Get findings filtered by severity level (critical, high, medium, low, info). (ADR-0007)")]
+    async fn get_findings_by_severity(&self, input: Parameters<GetFindingsBySeverityInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+        let severity = match input.severity.to_uppercase().as_str() {
+            "CRITICAL" => Severity::Critical,
+            "HIGH" => Severity::High,
+            "MEDIUM" => Severity::Medium,
+            "LOW" => Severity::Low,
+            "INFO" => Severity::Info,
+            _ => {
+                return Err(rmcp::ErrorData::invalid_params(
+                    format!("Unknown severity: '{}'. Valid values: critical, high, medium, low, info", input.severity),
+                    None,
+                ));
+            }
+        };
+
+        let store = self.findings_store.lock().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+        })?;
+
+        let findings = store.get_by_severity(&severity).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Failed to query findings: {}", e), None)
+        })?;
+
+        let json = serde_json::to_string_pretty(&findings).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Found {} findings with severity {:?}\n\n{}",
+            findings.len(), severity, json
+        ))]))
+    }
+
+    /// Get findings by viewpoint
+    #[tool(description = "Get findings filtered by viewpoint (e.g., VP-Q01, VP-Q02). (ADR-0007)")]
+    async fn get_findings_by_viewpoint(&self, input: Parameters<GetFindingsByViewpointInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+        let store = self.findings_store.lock().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+        })?;
+
+        let findings = store.get_by_viewpoint(&input.viewpoint).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Failed to query findings: {}", e), None)
+        })?;
+
+        let json = serde_json::to_string_pretty(&findings).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Found {} findings for viewpoint '{}'\n\n{}",
+            findings.len(), input.viewpoint, json
+        ))]))
+    }
+
+    /// Get findings by category
+    #[tool(description = "Get findings filtered by category (security, reliability, maintainability, performance, testability). (ADR-0007)")]
+    async fn get_findings_by_category(&self, input: Parameters<GetFindingsByCategoryInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+        let store = self.findings_store.lock().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+        })?;
+
+        let findings = store.get_by_category(&input.category).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Failed to query findings: {}", e), None)
+        })?;
+
+        let json = serde_json::to_string_pretty(&findings).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Found {} findings for category '{}'\n\n{}",
+            findings.len(), input.category, json
+        ))]))
+    }
+
+    /// Get findings summary statistics
+    #[tool(description = "Get summary statistics for all findings including counts by severity, category, and viewpoint. (ADR-0007)")]
+    async fn get_findings_summary(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        let store = self.findings_store.lock().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+        })?;
+
+        let summary = store.get_summary().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Failed to get summary: {}", e), None)
+        })?;
+
+        let json = serde_json::to_string_pretty(&summary).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    /// Export findings to JSON file
+    #[tool(description = "Export all findings to a JSON file. Useful for sharing or external processing. (ADR-0007)")]
+    async fn export_findings(&self, input: Parameters<ExportFindingsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+        let input = input.0;
+        let store = self.findings_store.lock().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
+        })?;
+
+        let count = store.export_json(&input.output_path).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Failed to export findings: {}", e), None)
+        })?;
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Exported {} findings to '{}'",
+            count, input.output_path
         ))]))
     }
 }

@@ -5,6 +5,7 @@
 
 pub mod artifacts;
 pub mod error;
+pub mod findings_store;
 pub mod model;
 pub mod ops;
 pub mod server;

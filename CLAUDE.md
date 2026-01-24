@@ -142,6 +142,12 @@ Read skills/vp-f01-tech-stack/SKILL.md and follow its instructions
 - `add_finding(viewpoint, category, title, description, file_path, base_severity, ...)` - Add finding
 - `add_findings(findings[])` - Batch add multiple findings (ADR-0005) ⚡
 - `get_findings()` - Get all findings
+- `get_findings_by_file(file_path)` - Get findings for a specific file (ADR-0007) 🔍
+- `get_findings_by_severity(severity)` - Filter findings by severity level (ADR-0007) 🔍
+- `get_findings_by_viewpoint(viewpoint)` - Get findings from a viewpoint (ADR-0007) 🔍
+- `get_findings_by_category(category)` - Filter findings by category (ADR-0007) 🔍
+- `get_findings_summary()` - Get finding counts by severity/category/viewpoint (ADR-0007) 🔍
+- `export_findings(output_path)` - Export findings to JSON file (ADR-0007) 📤
 - `synthesize(algorithm?)` - Cluster findings into root causes
 - `get_completed_viewpoints()` - List completed viewpoints
 - `get_commit_artifacts(commit?)` - List available/missing artifacts for commit (HEAD/latest supported)
@@ -151,6 +157,8 @@ Read skills/vp-f01-tech-stack/SKILL.md and follow its instructions
 
 *⚡ Batch operations (ADR-0005) - prefer these for efficiency*
 *💾 Deferred persistence (ADR-0006) - changes auto-flush at phase boundaries*
+*🔍 Query tools (ADR-0007) - findings stored in SQLite for fast queries*
+*📤 Export (ADR-0007) - export findings to JSON for external tools*
 
 ### methodology-kb server
 - `lookup_metric(metric, project_type?)` - Get metric definition and thresholds
