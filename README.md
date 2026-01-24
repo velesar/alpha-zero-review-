@@ -68,8 +68,10 @@ Manages the central mental model artifact and commit-indexed artifact storage.
 | `store_artifact` | Store SARIF/SCIP artifact for commit |
 | `get_artifact` | Retrieve stored artifact |
 | `get_commit_artifacts` | List available artifacts for commit |
+| `flush` | Persist pending changes to disk 💾 |
 
 *⚡ Batch operations (ADR-0005) - prefer these for efficiency*
+*💾 Deferred persistence (ADR-0006) - auto-flushes at phase boundaries*
 
 ### methodology-kb-server
 Knowledge base for metrics, thresholds, and standards.

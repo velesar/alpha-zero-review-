@@ -605,8 +605,10 @@ VP-F03 Build/Deploy  VP-S03 Domain          VP-Q03 Testability
 | `get_findings` | Retrieve all findings |
 | `synthesize` | Generate root causes |
 | `get_completed_viewpoints` | List completed viewpoints |
+| `flush` | Persist pending changes to disk 💾 |
 
 *⚡ Batch operations (ADR-0005) - prefer these for efficiency*
+*💾 Deferred persistence (ADR-0006) - auto-flushes at phase boundaries*
 
 **methodology-kb-server:**
 | Tool | Purpose |

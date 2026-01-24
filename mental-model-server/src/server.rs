@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use uuid::Uuid;
 
@@ -27,6 +28,7 @@ pub struct MentalModelServer {
     model_path: PathBuf,
     model: Arc<RwLock<MentalModel>>,
     artifact_store: Arc<ArtifactStore>,
+    dirty: Arc<AtomicBool>,  // ADR-0006: tracks unsaved changes
     tool_router: ToolRouter<Self>,
 }
 
@@ -224,6 +226,7 @@ impl MentalModelServer {
             model_path,
             model: Arc::new(RwLock::new(model)),
             artifact_store: Arc::new(ArtifactStore::new(project_path)),
+            dirty: Arc::new(AtomicBool::new(false)),  // ADR-0006
             tool_router: Self::tool_router(),
         }
     }
@@ -233,6 +236,29 @@ impl MentalModelServer {
         let yaml = serde_yaml::to_string(&*model)?;
         fs::write(&self.model_path, yaml)?;
         Ok(())
+    }
+
+    // ========== Deferred Persistence (ADR-0006) ==========
+
+    /// Mark the model as having unsaved changes
+    fn mark_dirty(&self) {
+        self.dirty.store(true, Ordering::SeqCst);
+    }
+
+    /// Flush to disk if there are pending changes. Returns true if flushed.
+    fn flush_if_dirty(&self) -> Result<bool> {
+        if self.dirty.swap(false, Ordering::SeqCst) {
+            self.save_model()?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Check if there are unsaved changes
+    #[allow(dead_code)]  // Useful for testing
+    fn is_dirty(&self) -> bool {
+        self.dirty.load(Ordering::SeqCst)
     }
 
     /// Initialize a new mental model for a project
@@ -291,8 +317,10 @@ impl MentalModelServer {
         })?;
 
         drop(model);
-        self.save_model().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
+        // ADR-0006: Phase boundary - flush all pending changes
+        self.mark_dirty();
+        self.flush_if_dirty().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
@@ -382,12 +410,11 @@ impl MentalModelServer {
         }
 
         drop(model);
-        self.save_model().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
-        })?;
+        // ADR-0006: Defer persistence - will flush at next phase boundary
+        self.mark_dirty();
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Finding added with adjusted severity: {:?}\n\n{}",
+            "Finding added with adjusted severity: {:?} (pending flush)\n\n{}",
             adjusted_severity, finding_json
         ))]))
     }
@@ -427,8 +454,10 @@ impl MentalModelServer {
         model.root_causes = root_causes.clone();
 
         drop(model);
-        self.save_model().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
+        // ADR-0006: End of audit - flush all pending changes
+        self.mark_dirty();
+        self.flush_if_dirty().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None)
         })?;
 
         let json = serde_json::to_string_pretty(&root_causes).map_err(|e| {
@@ -599,17 +628,15 @@ impl MentalModelServer {
         let added_count = added_findings.len();
 
         drop(model);
-        // Single save for all findings
-        self.save_model().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
-        })?;
+        // ADR-0006: Defer persistence - will flush at next phase boundary
+        self.mark_dirty();
 
         let json = serde_json::to_string_pretty(&added_findings).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Added {} findings in batch\n\n{}",
+            "Added {} findings in batch (pending flush)\n\n{}",
             added_count, json
         ))]))
     }
@@ -674,6 +701,27 @@ impl MentalModelServer {
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
+    }
+
+    // ========== Deferred Persistence (ADR-0006) ==========
+
+    /// Flush pending changes to disk
+    #[tool(description = "Persist any pending changes to disk. Called automatically at phase boundaries (update_viewpoint, synthesize), but can be called explicitly for additional safety. (ADR-0006)")]
+    async fn flush(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        let flushed = self.flush_if_dirty().map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None)
+        })?;
+
+        let message = if flushed {
+            "Pending changes flushed to disk"
+        } else {
+            "No pending changes to flush"
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "{{\"flushed\": {}, \"message\": \"{}\"}}",
+            flushed, message
+        ))]))
     }
 }
 

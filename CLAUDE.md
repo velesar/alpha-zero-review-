@@ -147,8 +147,10 @@ Read skills/vp-f01-tech-stack/SKILL.md and follow its instructions
 - `get_commit_artifacts(commit?)` - List available/missing artifacts for commit (HEAD/latest supported)
 - `store_artifact(commit, type, data, producer)` - Store SARIF/SCIP artifact for commit
 - `get_artifact(commit?, type)` - Retrieve stored artifact
+- `flush()` - Persist pending changes to disk (ADR-0006) 💾
 
 *⚡ Batch operations (ADR-0005) - prefer these for efficiency*
+*💾 Deferred persistence (ADR-0006) - changes auto-flush at phase boundaries*
 
 ### methodology-kb server
 - `lookup_metric(metric, project_type?)` - Get metric definition and thresholds
