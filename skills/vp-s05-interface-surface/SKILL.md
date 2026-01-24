@@ -1,8 +1,8 @@
 ---
 name: vp-s05-interface-surface
-version: 1.0
+version: 2.0
 dependencies: [vp-s02-layer-architecture, vp-s03-domain-model]
-mcp_servers: [mental-model, methodology-kb]
+mcp_servers: [mental-model, methodology-kb, codegraph]
 ---
 
 # VP-S05: Interface Surface Analysis
@@ -13,8 +13,25 @@ Map the external interfaces of the application including API endpoints, public m
 ## Prerequisites
 - VP-S02 (Layer Architecture) completed
 - VP-S03 (Domain Model) completed
+- (Optional) SCIP indexes in `.audit/indexes/` for semantic analysis
 
 ## Instructions
+
+### Step 0: Load SCIP Indexes (If Available)
+
+If the project has SCIP indexes (created with `setup-audit --with-index`), load them first:
+
+```
+codegraph/load_project_indexes
+  project_path: "."
+  build_if_missing: false
+```
+
+This enables semantic interface analysis:
+- `get_file_symbols(file_path)` - Get all exports from API files
+- `find_symbol(pattern)` - Find handlers, controllers, routes
+- `get_callers(symbol_id)` - Find what calls an API handler
+- `get_impact(symbol_id)` - Assess change impact for API functions
 
 ### Step 1: Get Current Context
 Call `mental-model/get_model` and extract:
@@ -124,6 +141,31 @@ Document:
 - Authorization levels (admin, user, etc.)
 
 ### Step 5: Identify Public Modules
+
+#### Using Codegraph (Preferred if SCIP Index Loaded)
+
+For semantic public API discovery:
+
+```
+# Get all symbols in API entry points
+codegraph/get_file_symbols
+  file_path: "src/api/mod.rs"
+
+# Find handler functions
+codegraph/find_symbol
+  pattern: "handler"
+
+# Analyze impact of changing a public function
+codegraph/get_impact
+  symbol_id: "<public_function_symbol>"
+```
+
+This provides:
+- Complete list of exported symbols
+- Visibility analysis (pub vs private)
+- Impact assessment for API changes
+
+#### Manual Fallback
 
 Find modules/packages meant for external consumption:
 

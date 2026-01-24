@@ -1,8 +1,8 @@
 ---
 name: vp-s07-architecture-decisions
-version: 1.0
+version: 2.0
 dependencies: [vp-s01-module-hierarchy, vp-s02-layer-architecture, vp-s06-dependency-graph]
-mcp_servers: [mental-model, methodology-kb]
+mcp_servers: [mental-model, methodology-kb, codegraph]
 ---
 
 # VP-S07: Architecture Decisions Analysis
@@ -13,6 +13,25 @@ Discover implicit Architecture Decision Records (ADRs) through patterns in code 
 ## Prerequisites
 - VP-S01, VP-S02, VP-S06 completed
 - Module hierarchy and layer architecture analyzed
+- (Optional) SCIP indexes in `.audit/indexes/` for semantic analysis
+
+## Instructions Preparation
+
+### Step 0: Load SCIP Indexes (If Available)
+
+If the project has SCIP indexes (created with `setup-audit --with-index`), load them first:
+
+```
+codegraph/load_project_indexes
+  project_path: "."
+  build_if_missing: false
+```
+
+This enables semantic decision discovery:
+- `find_symbol(pattern)` - Find pattern implementations (e.g., "Repository", "Factory")
+- `find_hotspot_symbols(min_callers)` - Find architectural hotspots
+- `get_impact(symbol_id)` - Assess decision change impact
+- `get_callers(symbol_id)` - Trace pattern usage
 
 ## Rationale
 
@@ -83,6 +102,32 @@ find . -name "*command*" -o -name "*query*" -o -name "*handler*"
 ```
 
 ### Step 5: Assess Decision Consistency
+
+#### Using Codegraph (Preferred if SCIP Index Loaded)
+
+For semantic consistency analysis:
+
+```
+# Find all implementations of a pattern (e.g., Repository)
+codegraph/find_symbol
+  pattern: "Repository"
+
+# Find hotspots that may indicate pattern violations
+codegraph/find_hotspot_symbols
+  min_callers: 10
+  path_filter: "src/"
+
+# Analyze impact of changing a core decision
+codegraph/get_impact
+  symbol_id: "<core_pattern_symbol>"
+```
+
+This helps quantify:
+- Pattern adoption percentage
+- Deviations from expected structure
+- Impact of potential decision changes
+
+#### Consistency Evaluation
 
 For each detected pattern, evaluate:
 - Is it consistently applied across the codebase?

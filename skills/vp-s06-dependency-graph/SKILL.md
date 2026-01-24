@@ -1,8 +1,8 @@
 ---
 name: vp-s06-dependency-graph
-version: 2.0
+version: 2.1
 dependencies: [vp-f01-tech-stack, vp-s01-module-hierarchy, vp-s02-layer-architecture]
-mcp_servers: [mental-model, methodology-kb]
+mcp_servers: [mental-model, methodology-kb, codegraph]
 ---
 
 # VP-S06: Dependency Graph Analysis
@@ -14,8 +14,25 @@ Visualize and analyze component dependencies to identify coupling issues, circul
 - Module hierarchy identified (VP-S01)
 - Architecture layers defined (VP-S02)
 - Git history available for churn analysis
+- (Optional) SCIP indexes in `.audit/indexes/` for semantic analysis
 
 ## Instructions
+
+### Step 0: Load SCIP Indexes (If Available)
+
+If the project has SCIP indexes (created with `setup-audit --with-index`), load them first:
+
+```
+codegraph/load_project_indexes
+  project_path: "."
+  build_if_missing: false
+```
+
+This enables semantic analysis:
+- `find_symbol(pattern)` - Find symbols by name
+- `get_callers(symbol_id)` - Find all callers of a function
+- `get_impact(symbol_id)` - Analyze change impact
+- `find_hotspot_symbols(min_callers)` - Find highly-coupled symbols
 
 ### Step 1: Get Current Context
 
@@ -112,6 +129,20 @@ Flag violations:
 - Circular layer dependencies
 
 ### Step 7: Calculate Hotspot Scores
+
+#### Using Codegraph (If SCIP Index Loaded)
+
+Find symbols with many callers (high coupling):
+
+```
+codegraph/find_hotspot_symbols
+  min_callers: 5
+  path_filter: "src/"
+```
+
+This returns symbols with ≥5 references, which are coupling hotspots.
+
+#### Using Git Churn
 
 Combine dependency metrics with code churn:
 

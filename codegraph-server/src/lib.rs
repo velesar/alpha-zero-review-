@@ -5,6 +5,7 @@
 
 pub mod error;
 pub mod graph;
+pub mod index_manager;
 pub mod ops;
 pub mod server;
 pub mod utils;

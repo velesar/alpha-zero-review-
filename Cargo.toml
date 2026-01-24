@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["mental-model-server", "methodology-kb-server", "sarif-tools-server", "codegraph-server"]
+members = ["mental-model-server", "methodology-kb-server", "sarif-tools-server", "codegraph-server", "setup-cli"]
 
 [workspace.dependencies]
 rmcp = { version = "0.3", features = ["server", "transport-io"] }

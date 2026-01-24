@@ -1,8 +1,8 @@
 ---
 name: vp-s04-entity-model
-version: 1.0
+version: 2.0
 dependencies: [vp-s03-domain-model]
-mcp_servers: [mental-model, methodology-kb]
+mcp_servers: [mental-model, methodology-kb, codegraph]
 ---
 
 # VP-S04: Entity Model Analysis
@@ -13,8 +13,25 @@ Analyze data entities, their relationships, and data modeling patterns to unders
 ## Prerequisites
 - VP-S03 (Domain Model) completed
 - Bounded contexts identified
+- (Optional) SCIP indexes in `.audit/indexes/` for semantic analysis
 
 ## Instructions
+
+### Step 0: Load SCIP Indexes (If Available)
+
+If the project has SCIP indexes (created with `setup-audit --with-index`), load them first:
+
+```
+codegraph/load_project_indexes
+  project_path: "."
+  build_if_missing: false
+```
+
+This enables semantic entity analysis:
+- `get_file_symbols(file_path)` - Get all entities in a file
+- `find_symbol(pattern)` - Find entities by name pattern (e.g., "Model", "Entity")
+- `get_callers(symbol_id)` - Find entity usage and relationships
+- `get_callees(symbol_id)` - Find what entities reference
 
 ### Step 1: Get Current Context
 Call `mental-model/get_model` and extract:
@@ -72,7 +89,28 @@ pub struct User {
 
 ### Step 3: Map Entity Relationships
 
-For each entity, identify relationships:
+#### Using Codegraph (Preferred if SCIP Index Loaded)
+
+For semantic relationship discovery:
+
+```
+# Get all symbols in an entity file
+codegraph/get_file_symbols
+  file_path: "src/models/user.rs"
+
+# Find what a User entity references (outgoing relationships)
+codegraph/get_callees
+  symbol_id: "rust-analyzer cargo . User#"
+
+# Find what references User (incoming relationships)
+codegraph/get_callers
+  symbol_id: "rust-analyzer cargo . User#"
+```
+
+This provides:
+- Exact field-level relationships
+- Bidirectional relationship detection
+- N+1 query risk identification (many callers of entity)
 
 #### Relationship Types
 
