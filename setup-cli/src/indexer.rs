@@ -4,6 +4,10 @@ use crate::language::Language;
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
+
+/// Default timeout for indexer commands (5 minutes)
+const COMMAND_TIMEOUT_SECS: u64 = 300;
 
 /// Indexer availability status
 #[derive(Debug, Clone)]
@@ -95,14 +99,93 @@ impl IndexerConfig {
     }
 }
 
+/// Run a command with timeout support
+///
+/// # Arguments
+/// * `cmd` - The command to run
+/// * `args` - Arguments to pass to the command
+/// * `cwd` - Optional working directory
+/// * `timeout_secs` - Timeout in seconds
+///
+/// # Returns
+/// The command output, or an error if timeout or execution fails
+fn run_command_with_timeout(
+    cmd: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+    timeout_secs: u64,
+) -> Result<std::process::Output> {
+    use std::process::Stdio;
+    use std::io::Read;
+
+    let mut command = Command::new(cmd);
+    command.args(args);
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+
+    if let Some(dir) = cwd {
+        command.current_dir(dir);
+    }
+
+    let mut child = command.spawn()
+        .context(format!("Failed to spawn command: {}", cmd))?;
+
+    // Wait with timeout using a simple polling approach
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(timeout_secs);
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // Process finished, collect output
+                let mut stdout = Vec::new();
+                let mut stderr = Vec::new();
+
+                if let Some(mut out) = child.stdout.take() {
+                    out.read_to_end(&mut stdout)?;
+                }
+                if let Some(mut err) = child.stderr.take() {
+                    err.read_to_end(&mut stderr)?;
+                }
+
+                return Ok(std::process::Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
+            Ok(None) => {
+                // Still running, check timeout
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    bail!(
+                        "Command '{}' timed out after {} seconds",
+                        cmd,
+                        timeout_secs
+                    );
+                }
+                // Sleep briefly before checking again
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                bail!("Error waiting for command '{}': {}", cmd, e);
+            }
+        }
+    }
+}
+
 /// Check if an indexer is available
 pub fn check_indexer(lang: Language) -> IndexerStatus {
     let config = IndexerConfig::for_language(lang);
 
-    let (installed, version) = match Command::new(config.check_command)
-        .args(config.check_args)
-        .output()
-    {
+    // Use short timeout for availability check (10 seconds)
+    let (installed, version) = match run_command_with_timeout(
+        config.check_command,
+        config.check_args,
+        None,
+        10,
+    ) {
         Ok(output) if output.status.success() => {
             let version = String::from_utf8_lossy(&output.stdout)
                 .lines()
@@ -137,11 +220,10 @@ pub fn install_indexer(lang: Language) -> Result<()> {
     println!("  Installing {} indexer...", lang);
     println!("    Running: {}", install_cmd.join(" "));
 
-    let (cmd, args) = install_cmd.split_first().unwrap();
+    let (cmd, args) = install_cmd.split_first()
+        .ok_or_else(|| anyhow::anyhow!("Empty install command for {}", lang))?;
 
-    let output = Command::new(cmd)
-        .args(args)
-        .output()
+    let output = run_command_with_timeout(cmd, args, None, COMMAND_TIMEOUT_SECS)
         .context(format!("Failed to run install command for {}", lang))?;
 
     if !output.status.success() {
@@ -166,12 +248,14 @@ pub fn build_index(lang: Language, project_path: &Path, output_dir: &Path) -> Re
     // Ensure output directory exists
     std::fs::create_dir_all(output_dir)?;
 
-    // Run indexer from project directory
-    let output = Command::new(config.build_command)
-        .args(config.build_args)
-        .current_dir(project_path)
-        .output()
-        .context(format!("Failed to run {} indexer", lang))?;
+    // Run indexer from project directory with timeout
+    let output = run_command_with_timeout(
+        config.build_command,
+        config.build_args,
+        Some(project_path),
+        COMMAND_TIMEOUT_SECS,
+    )
+    .context(format!("Failed to run {} indexer", lang))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

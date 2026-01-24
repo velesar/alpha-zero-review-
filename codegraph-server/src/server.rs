@@ -141,23 +141,80 @@ impl CodegraphServer {
         })
     }
 
+    /// Validate that a path is safe to access
+    ///
+    /// Ensures the path:
+    /// - Exists
+    /// - Is within the project directory or .audit/indexes/ directory
+    /// - Does not traverse outside allowed directories
+    fn validate_index_path(&self, path: &std::path::Path) -> Result<PathBuf, rmcp::ErrorData> {
+        // Canonicalize to resolve symlinks and relative paths
+        let canonical = path.canonicalize().map_err(|e| {
+            rmcp::ErrorData::invalid_params(
+                format!("Cannot resolve path {}: {}", path.display(), e),
+                None,
+            )
+        })?;
+
+        // Check if we have a project path set
+        if let Ok(project_guard) = self.project_path.read() {
+            if let Some(project_path) = project_guard.as_ref() {
+                let project_canonical = project_path.canonicalize().unwrap_or_else(|_| project_path.clone());
+
+                // Allow paths within project directory or its .audit subdirectory
+                if !canonical.starts_with(&project_canonical) {
+                    return Err(rmcp::ErrorData::invalid_params(
+                        format!(
+                            "Path {} is outside project directory {}",
+                            canonical.display(),
+                            project_canonical.display()
+                        ),
+                        None,
+                    ));
+                }
+            }
+        }
+
+        // Ensure it's a file, not a directory
+        if canonical.is_dir() {
+            return Err(rmcp::ErrorData::invalid_params(
+                format!("Path {} is a directory, expected a file", canonical.display()),
+                None,
+            ));
+        }
+
+        // Ensure it has an allowed extension
+        let extension = canonical.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if extension != "scip" && extension != "json" {
+            return Err(rmcp::ErrorData::invalid_params(
+                format!("Unsupported file type: .{}. Expected .scip or .json", extension),
+                None,
+            ));
+        }
+
+        Ok(canonical)
+    }
+
     /// Load a SCIP index file
     #[tool(description = "Load a SCIP index file (.scip) or JSON codegraph file for semantic analysis")]
     async fn load_index(&self, input: Parameters<LoadIndexInput>) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let path = PathBuf::from(&input.scip_path);
 
-        if !path.exists() {
+        // Validate path before loading
+        let validated_path = if path.exists() {
+            self.validate_index_path(&path)?
+        } else {
             return Err(rmcp::ErrorData::invalid_params(
                 format!("Index file not found: {}", input.scip_path),
                 None,
             ));
-        }
+        };
 
-        let graph = if path.extension().map(|e| e == "json").unwrap_or(false) {
-            Codegraph::load_from_json(&path)
+        let graph = if validated_path.extension().map(|e| e == "json").unwrap_or(false) {
+            Codegraph::load_from_json(&validated_path)
         } else {
-            Codegraph::load_from_scip(&path)
+            Codegraph::load_from_scip(&validated_path)
         }.map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to load index: {}", e), None))?;
 
         let output = LoadIndexOutput {

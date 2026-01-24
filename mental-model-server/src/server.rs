@@ -257,11 +257,31 @@ pub struct GetArtifactOutput {
 
 #[tool_router]
 impl MentalModelServer {
-    pub fn new(model_path: PathBuf) -> Self {
+    /// Create a new MentalModelServer
+    ///
+    /// # Arguments
+    /// * `model_path` - Path to the mental model YAML file
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The model file exists but cannot be parsed (logged as warning, uses default)
+    /// - The findings store cannot be created
+    pub fn new(model_path: PathBuf) -> Result<Self> {
         let model = if model_path.exists() {
             match fs::read_to_string(&model_path) {
-                Ok(content) => serde_yaml::from_str(&content).unwrap_or_default(),
-                Err(_) => MentalModel::default(),
+                Ok(content) => {
+                    match serde_yaml::from_str(&content) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            tracing::warn!("Failed to parse model file {}: {}, using default", model_path.display(), e);
+                            MentalModel::default()
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to read model file {}: {}, using default", model_path.display(), e);
+                    MentalModel::default()
+                }
             }
         } else {
             MentalModel::default()
@@ -277,16 +297,16 @@ impl MentalModelServer {
         // ADR-0007: Create findings store in .audit directory
         let findings_db_path = project_path.join(".audit").join("findings.db");
         let findings_store = FindingsStore::new(&findings_db_path)
-            .expect("Failed to create findings store");
+            .map_err(|e| anyhow::anyhow!("Failed to create findings store at {}: {}", findings_db_path.display(), e))?;
 
-        Self {
+        Ok(Self {
             model_path,
             model: Arc::new(RwLock::new(model)),
             findings_store: Arc::new(Mutex::new(findings_store)),
             artifact_store: Arc::new(ArtifactStore::new(project_path)),
             dirty: Arc::new(AtomicBool::new(false)),  // ADR-0006
             tool_router: Self::tool_router(),
-        }
+        })
     }
 
     fn save_model(&self) -> Result<()> {

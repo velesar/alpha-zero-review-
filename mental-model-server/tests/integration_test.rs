@@ -267,7 +267,7 @@ fn test_server_creation_and_info() {
     let temp_dir = TempDir::new().unwrap();
     let model_path = temp_dir.path().join("model.yaml");
 
-    let server = MentalModelServer::new(model_path);
+    let server = MentalModelServer::new(model_path).expect("Failed to create server");
     let info = server.get_info();
 
     assert_eq!(info.server_info.name, "mental-model");

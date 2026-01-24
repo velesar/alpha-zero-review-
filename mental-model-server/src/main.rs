@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
     tracing::info!("Model path: {:?}", args.model_path);
 
     // Create the server
-    let server = server::MentalModelServer::new(args.model_path);
+    let server = server::MentalModelServer::new(args.model_path)?;
 
     // Run with stdio transport
     let service = server.serve(rmcp::transport::stdio()).await?;
