@@ -124,39 +124,112 @@ pub fn cline_mcp_settings(agent_dir: &Path, target_dir: &Path) -> String {
 pub fn agents_md() -> &'static str {
     r#"# AI Code Audit Agent Instructions
 
-This project is configured for code auditing using the AI Code Audit Agent methodology.
+You are conducting a structured code audit. You MUST use the MCP tools below - they are essential for quality audits.
 
-## Quick Start
+## CRITICAL: Always Use These MCP Tools
 
-Run a full code audit:
+### 1. mental-model (REQUIRED - Start Here)
+**Purpose:** Central audit state management. All findings go here.
+
+**MUST call first:**
 ```
-Run a full code audit using the viewpoints framework
+mental-model/init_model { "project_name": "project-name", "repo_path": "." }
 ```
 
-## Available MCP Tools
+**After analyzing code, ALWAYS add findings:**
+```
+mental-model/add_findings {
+  "findings": [
+    { "title": "SQL Injection", "severity": "high", "file_path": "src/db.py", "line": 42, "description": "..." }
+  ]
+}
+```
 
-### mental-model (22 tools)
-Core audit artifact management: init_model, get_model, update_viewpoint, add_finding, add_findings (batch), get_findings, get_findings_by_file, get_findings_by_severity, synthesize, export_findings, flush
+**At the end, ALWAYS synthesize:**
+```
+mental-model/synthesize {}
+```
 
-### methodology-kb (11 tools)
-Metrics and classification: lookup_metric, classify_finding, get_thresholds, check_compliance, get_template, list_metrics
+### 2. methodology-kb (REQUIRED - For Severity Classification)
+**Purpose:** Provides metric thresholds and adjusts finding severity based on context.
 
-### sarif-tools (3 tools)
-Code analysis: list_available_tools, merge_sarif, get_tool_config
+**Before adding findings, classify severity:**
+```
+methodology-kb/classify_finding {
+  "tool": "semgrep",
+  "rule_id": "python.lang.security.audit.dangerous-exec",
+  "context": { "bounded_context_type": "core", "layer": "domain", "is_hotspot": true }
+}
+```
+This returns adjusted severity (a finding in "core/domain" is more severe than in "adapter/infra").
 
-### codegraph (11 tools)
-Code intelligence: load_index, load_project_indexes, find_symbol, get_callers, get_impact, find_hotspot_symbols
+**Look up metric thresholds:**
+```
+methodology-kb/get_thresholds { "project_type": "web_service", "language": "python" }
+```
+
+### 3. codegraph (REQUIRED - For Impact Analysis)
+**Purpose:** Semantic code intelligence. Find callers, dependencies, hotspots.
+
+**First, load indexes (if .audit/indexes/ exists):**
+```
+codegraph/load_project_indexes { "project_path": "." }
+```
+
+**Find high-impact code (hotspots):**
+```
+codegraph/find_hotspot_symbols { "min_callers": 5 }
+```
+
+**Analyze impact before recommending changes:**
+```
+codegraph/get_impact { "symbol_id": "src/auth.py#authenticate" }
+```
+
+**Find all callers of a function:**
+```
+codegraph/get_callers { "symbol_id": "src/db.py#execute_query" }
+```
+
+### 4. sarif-tools (For Running Scanners)
+**Purpose:** Run code analysis tools and get SARIF output.
+
+```
+sarif-tools/run_tool { "tool": "semgrep", "path": "src/" }
+sarif-tools/run_tool { "tool": "bandit", "path": "src/" }
+```
 
 ## Audit Workflow
 
-1. **Foundation**: VP-F01 (Tech Stack), VP-F02 (Structure), VP-F03 (Build)
-2. **Structure**: VP-S01-S07 (Modules, Layers, Domain, Entities, Interfaces)
-3. **Quality**: VP-Q01-Q05 (Security, Performance, Testability, Style, Docs)
-4. **Synthesis**: VP-Q06 (Root causes with Fowler Quadrant)
+### Phase 1: Foundation
+1. Call `mental-model/init_model`
+2. Analyze: tech stack, project structure, build system
+3. Call `mental-model/update_viewpoint` with VP-F01, VP-F02, VP-F03 data
+
+### Phase 2: Structure
+1. If `.audit/indexes/` exists: `codegraph/load_project_indexes`
+2. Use `codegraph/find_hotspot_symbols` to identify critical code
+3. Analyze: modules, layers, domain model, interfaces
+4. Call `mental-model/update_viewpoint` with VP-S01 through VP-S07 data
+
+### Phase 3: Quality
+1. Run scanners: `sarif-tools/run_tool`
+2. For each finding:
+   - Get context: `mental-model/get_context`
+   - Classify severity: `methodology-kb/classify_finding`
+   - Check impact: `codegraph/get_impact` (for critical findings)
+3. Batch add: `mental-model/add_findings`
+
+### Phase 4: Synthesis
+1. Call `mental-model/synthesize` - clusters findings into root causes
+2. NEVER dump 100+ raw findings. Present 3-5 root causes.
+3. Classify debt using Fowler Quadrant (Prudent/Reckless × Deliberate/Inadvertent)
 
 ## Key Rules
-- **NEVER dump raw findings.** Always synthesize into 3-5 root causes.
-- **Use `load_project_indexes`** if `.audit/indexes/` exists for code intelligence.
+- **ALWAYS initialize mental-model first**
+- **ALWAYS use methodology-kb to classify finding severity** - raw tool output is not context-aware
+- **ALWAYS use codegraph for impact analysis** - understand what code is critical before making recommendations
+- **NEVER present raw findings** - always synthesize into root causes
 "#
 }
 
