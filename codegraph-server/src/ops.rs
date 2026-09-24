@@ -86,7 +86,7 @@ pub fn find_hotspots(
     }
 
     // Sort by caller count descending
-    hotspots.sort_by(|a, b| b.caller_count.cmp(&a.caller_count));
+    hotspots.sort_by_key(|h| std::cmp::Reverse(h.caller_count));
     hotspots
 }
 
