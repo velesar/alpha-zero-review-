@@ -79,6 +79,15 @@ pub struct FindingContextInput {
     /// Whether this is in a hotspot
     #[serde(default)]
     pub is_hotspot: bool,
+    /// File path of the finding (used by path_pattern rules)
+    #[serde(default)]
+    pub file_path: Option<String>,
+    /// Business context tags (e.g. "payment", "auth", "public_api")
+    #[serde(default)]
+    pub business_context: Vec<String>,
+    /// Number of callers of the affected symbol (e.g. from codegraph)
+    #[serde(default)]
+    pub caller_count: Option<u32>,
 }
 
 /// Input for get_thresholds tool
@@ -144,10 +153,29 @@ pub struct GetAcquisitionStatusInput {
     pub commit: String,
 }
 
+fn parse_project_type(name: &str) -> Result<ProjectType, rmcp::ErrorData> {
+    ProjectType::parse(name).ok_or_else(|| {
+        rmcp::ErrorData::invalid_params(format!("Unknown project type: {}", name), None)
+    })
+}
+
+/// Match a glob against a path or any of its trailing components, so that
+/// "tests/*" matches both "tests/a.py" and "src/tests/a.py".
+fn path_matches(pattern: &str, path: &str) -> bool {
+    let Ok(pattern) = glob::Pattern::new(pattern) else {
+        return false;
+    };
+    let path = path.replace('\\', "/");
+    let path = path.trim_start_matches("./");
+    std::iter::once(path)
+        .chain(path.match_indices('/').map(|(i, _)| &path[i + 1..]))
+        .any(|candidate| pattern.matches(candidate))
+}
+
 #[tool_router]
 impl MethodologyKBServer {
     pub fn new(kb_path: PathBuf) -> Self {
-        let kb = Self::load_kb(&kb_path).unwrap_or_default();
+        let (kb, _errors) = Self::load_kb(&kb_path);
 
         // Get project path from current directory or parent of kb_path
         let project_path = std::env::current_dir().unwrap_or_else(|_| {
@@ -165,60 +193,86 @@ impl MethodologyKBServer {
         }
     }
 
-    fn load_kb(kb_path: &Path) -> Result<MethodologyKB> {
+    /// Load the KB from disk.
+    ///
+    /// Each file is loaded independently: a file that fails to read or parse
+    /// is skipped and its error is logged and returned, so one bad file does
+    /// not discard the rest of the knowledge base.
+    pub fn load_kb(kb_path: &Path) -> (MethodologyKB, Vec<String>) {
         let mut kb = MethodologyKB::default();
+        let mut errors = Vec::new();
 
-        // Load metrics from glossary
-        let metrics_path = kb_path.join("glossary/metrics.yaml");
-        if metrics_path.exists() {
-            let content = fs::read_to_string(&metrics_path)?;
-            let metrics: HashMap<String, MetricDefinition> = serde_yaml::from_str(&content)?;
+        fn load_yaml<T: serde::de::DeserializeOwned>(
+            path: &Path,
+            errors: &mut Vec<String>,
+        ) -> Option<T> {
+            if !path.exists() {
+                return None;
+            }
+            let parsed = fs::read_to_string(path)
+                .map_err(anyhow::Error::from)
+                .and_then(|content| serde_yaml::from_str(&content).map_err(Into::into));
+            match parsed {
+                Ok(value) => Some(value),
+                Err(e) => {
+                    let msg = format!("{}: {}", path.display(), e);
+                    tracing::error!("Failed to load KB file {}", msg);
+                    errors.push(msg);
+                    None
+                }
+            }
+        }
+
+        if let Some(metrics) = load_yaml(&kb_path.join("glossary/metrics.yaml"), &mut errors) {
             kb.metrics = metrics;
         }
-
-        // Load thresholds
-        let thresholds_path = kb_path.join("thresholds/by_project_type.yaml");
-        if thresholds_path.exists() {
-            let content = fs::read_to_string(&thresholds_path)?;
-            let thresholds: Vec<ThresholdSet> = serde_yaml::from_str(&content)?;
+        if let Some(thresholds) = load_yaml(
+            &kb_path.join("thresholds/by_project_type.yaml"),
+            &mut errors,
+        ) {
             kb.thresholds = thresholds;
         }
-
-        // Load categories
-        let categories_path = kb_path.join("taxonomies/categories.yaml");
-        if categories_path.exists() {
-            let content = fs::read_to_string(&categories_path)?;
-            let categories: HashMap<String, CategoryDefinition> = serde_yaml::from_str(&content)?;
+        if let Some(categories) =
+            load_yaml(&kb_path.join("taxonomies/categories.yaml"), &mut errors)
+        {
             kb.categories = categories;
         }
-
-        // Load severity adjustments
-        let severity_path = kb_path.join("taxonomies/severity_adjustment.yaml");
-        if severity_path.exists() {
-            let content = fs::read_to_string(&severity_path)?;
-            let adjustments: Vec<SeverityAdjustmentRule> = serde_yaml::from_str(&content)?;
+        if let Some(adjustments) = load_yaml(
+            &kb_path.join("taxonomies/severity_adjustment.yaml"),
+            &mut errors,
+        ) {
             kb.severity_adjustments = adjustments;
         }
-
-        // Load rule mappings
-        let mappings_path = kb_path.join("taxonomies/rule_mapping.yaml");
-        if mappings_path.exists() {
-            let content = fs::read_to_string(&mappings_path)?;
-            let mappings: Vec<RuleMapping> = serde_yaml::from_str(&content)?;
+        if let Some(mappings) =
+            load_yaml(&kb_path.join("taxonomies/rule_mapping.yaml"), &mut errors)
+        {
             kb.rule_mappings = mappings;
         }
 
-        // Load architecture standards
-        for path in glob::glob(&kb_path.join("standards/*.yaml").to_string_lossy())?.flatten() {
-            let content = fs::read_to_string(&path)?;
-            let standard: ArchitectureStandard = serde_yaml::from_str(&content)?;
-            kb.standards.insert(standard.id.clone(), standard);
+        let pattern = |sub: &str| kb_path.join(sub).to_string_lossy().to_string();
+
+        for path in glob::glob(&pattern("standards/*.yaml"))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            if let Some(standard) = load_yaml::<ArchitectureStandard>(&path, &mut errors) {
+                kb.standards.insert(standard.id.clone(), standard);
+            }
         }
 
-        // Load report templates
-        for path in glob::glob(&kb_path.join("templates/reports/*.md").to_string_lossy())?.flatten()
+        for path in glob::glob(&pattern("templates/reports/*.md"))
+            .into_iter()
+            .flatten()
+            .flatten()
         {
-            let content = fs::read_to_string(&path)?;
+            let content = match fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(e) => {
+                    errors.push(format!("{}: {}", path.display(), e));
+                    continue;
+                }
+            };
             let id = path
                 .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
@@ -235,7 +289,7 @@ impl MethodologyKBServer {
             );
         }
 
-        Ok(kb)
+        (kb, errors)
     }
 
     /// Look up a metric definition and thresholds
@@ -252,14 +306,7 @@ impl MethodologyKBServer {
         if let Some(mut metric) = metric {
             // Get project-specific thresholds if available
             if let Some(project_type_str) = input.project_type {
-                let project_type = match project_type_str.to_lowercase().as_str() {
-                    "greenfield" => ProjectType::Greenfield,
-                    "mature" => ProjectType::Mature,
-                    "legacy" => ProjectType::Legacy,
-                    "startup" => ProjectType::Startup,
-                    "enterprise" => ProjectType::Enterprise,
-                    _ => ProjectType::Mature,
-                };
+                let project_type = parse_project_type(&project_type_str)?;
 
                 for threshold_set in &self.kb.thresholds {
                     if threshold_set.project_type == project_type {
@@ -328,6 +375,23 @@ impl MethodologyKBServer {
         let mut adjustment_factors = Vec::new();
 
         if let Some(context) = &input.context {
+            // Path rules overlap (e.g. "tests/*" and "*_test.py"), so only the
+            // first matching one is applied to avoid compounding multipliers.
+            let mut path_rule_applied = false;
+
+            // Caller-count thresholds are tiers: apply only the highest one reached.
+            let caller_tier = context.caller_count.and_then(|count| {
+                self.kb
+                    .severity_adjustments
+                    .iter()
+                    .filter_map(|rule| match rule.condition {
+                        AdjustmentCondition::CallerCount { min_callers } => Some(min_callers),
+                        _ => None,
+                    })
+                    .filter(|&min| count >= min)
+                    .max()
+            });
+
             // Apply severity adjustment rules
             for rule in &self.kb.severity_adjustments {
                 let applies = match &rule.condition {
@@ -341,6 +405,22 @@ impl MethodologyKBServer {
                     AdjustmentCondition::IsHotspot => context.is_hotspot,
                     AdjustmentCondition::CategoryMatch { category: cat } => {
                         category.to_lowercase() == cat.to_lowercase()
+                    }
+                    AdjustmentCondition::PathPattern { pattern } => {
+                        let matched = !path_rule_applied
+                            && context
+                                .file_path
+                                .as_deref()
+                                .is_some_and(|path| path_matches(pattern, path));
+                        path_rule_applied |= matched;
+                        matched
+                    }
+                    AdjustmentCondition::BusinessContext { context: tag } => context
+                        .business_context
+                        .iter()
+                        .any(|c| c.eq_ignore_ascii_case(tag)),
+                    AdjustmentCondition::CallerCount { min_callers } => {
+                        caller_tier == Some(*min_callers)
                     }
                 };
 
@@ -400,14 +480,7 @@ impl MethodologyKBServer {
         input: Parameters<GetThresholdsInput>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let project_type = match input.project_type.to_lowercase().as_str() {
-            "greenfield" => ProjectType::Greenfield,
-            "mature" => ProjectType::Mature,
-            "legacy" => ProjectType::Legacy,
-            "startup" => ProjectType::Startup,
-            "enterprise" => ProjectType::Enterprise,
-            _ => ProjectType::Mature,
-        };
+        let project_type = parse_project_type(&input.project_type)?;
 
         let mut result_thresholds: HashMap<String, ThresholdValue> = HashMap::new();
 
@@ -767,5 +840,35 @@ impl ServerHandler for MethodologyKBServer {
     ) -> impl std::future::Future<Output = Result<CallToolResult, ErrorData>> + Send + '_ {
         let tool_context = ToolCallContext::new(self, request, context);
         self.tool_router.call(tool_context)
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::path_matches;
+
+    #[test]
+    fn matches_directory_patterns_at_any_depth() {
+        assert!(path_matches("tests/*", "tests/test_a.py"));
+        assert!(path_matches("tests/*", "src/tests/test_a.py"));
+        assert!(path_matches("tests/*", "./tests/a.py"));
+        assert!(!path_matches("tests/*", "src/contests.py"));
+    }
+
+    #[test]
+    fn matches_file_name_patterns() {
+        assert!(path_matches("*_test.py", "pkg/foo_test.py"));
+        assert!(path_matches("*.spec.ts", "src/app/app.spec.ts"));
+        assert!(!path_matches("*.spec.ts", "src/app/app.ts"));
+    }
+
+    #[test]
+    fn project_types_parse_case_insensitively() {
+        use crate::types::ProjectType;
+        assert_eq!(
+            ProjectType::parse("Python_Backend"),
+            Some(ProjectType::PythonBackend)
+        );
+        assert_eq!(ProjectType::parse("bogus"), None);
     }
 }

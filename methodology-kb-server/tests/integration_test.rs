@@ -281,3 +281,18 @@ fn test_server_creation_and_info() {
     assert!(info.instructions.is_some());
     assert!(info.instructions.unwrap().contains("Methodology"));
 }
+
+#[test]
+fn test_shipped_kb_loads_without_errors() {
+    use methodology_kb_server::server::MethodologyKBServer;
+    let kb_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../methodology_kb");
+    let (kb, errors) = MethodologyKBServer::load_kb(&kb_path);
+    assert!(errors.is_empty(), "KB load errors: {:#?}", errors);
+    assert!(!kb.metrics.is_empty());
+    assert!(!kb.thresholds.is_empty());
+    assert!(!kb.categories.is_empty());
+    assert!(!kb.severity_adjustments.is_empty());
+    assert!(!kb.rule_mappings.is_empty());
+    assert!(kb.standards.len() >= 4);
+    assert!(!kb.templates.is_empty());
+}

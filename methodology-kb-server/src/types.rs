@@ -23,10 +23,12 @@ pub struct MetricDefinition {
 
 /// Direction indicating whether higher or lower values are better
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum MetricDirection {
     #[default]
+    #[serde(alias = "lowerisbetter")]
     LowerIsBetter,
+    #[serde(alias = "higherisbetter")]
     HigherIsBetter,
 }
 
@@ -43,7 +45,7 @@ pub struct ThresholdValue {
 
 /// Project type for threshold selection
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 #[derive(Default)]
 pub enum ProjectType {
     Greenfield,
@@ -52,6 +54,20 @@ pub enum ProjectType {
     Legacy,
     Startup,
     Enterprise,
+    PythonBackend,
+    TypescriptFrontend,
+    PythonLibrary,
+    NodejsBackend,
+    DataPipeline,
+    Infrastructure,
+    CriticalPath,
+}
+
+impl ProjectType {
+    /// Parse a project type name (case-insensitive, e.g. "python_backend")
+    pub fn parse(name: &str) -> Option<Self> {
+        serde_json::from_value(serde_json::Value::String(name.to_lowercase())).ok()
+    }
 }
 
 /// Threshold set for a specific project type and language
@@ -88,10 +104,28 @@ pub struct SeverityAdjustmentRule {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AdjustmentCondition {
-    BoundedContextType { value: String },
-    LayerType { value: String },
+    BoundedContextType {
+        value: String,
+    },
+    LayerType {
+        value: String,
+    },
     IsHotspot,
-    CategoryMatch { category: String },
+    CategoryMatch {
+        category: String,
+    },
+    /// Glob matched against the finding's file path (or any trailing part of it)
+    PathPattern {
+        pattern: String,
+    },
+    /// Business context tag of the code (e.g. "payment", "auth")
+    BusinessContext {
+        context: String,
+    },
+    /// Number of callers of the affected symbol is at least `min_callers`
+    CallerCount {
+        min_callers: u32,
+    },
 }
 
 /// Rule mapping from tool rules to categories
