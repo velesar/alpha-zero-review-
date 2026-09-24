@@ -194,6 +194,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "mcp-test-support",
  "prost",
  "prost-build",
  "protoc-bin-vendored",
@@ -630,6 +631,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mcp-test-support"
+version = "0.1.0"
+dependencies = [
+ "rmcp",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "memchr"
 version = "2.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -644,6 +654,7 @@ dependencies = [
  "chrono",
  "clap",
  "glob",
+ "mcp-test-support",
  "rmcp",
  "rusqlite",
  "schemars",
@@ -666,6 +677,7 @@ dependencies = [
  "chrono",
  "clap",
  "glob",
+ "mcp-test-support",
  "rmcp",
  "schemars",
  "serde",
@@ -1025,6 +1037,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
 ]
@@ -1087,6 +1100,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "mcp-test-support",
  "rmcp",
  "schemars",
  "serde",
@@ -1373,6 +1387,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "tokio-stream"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3d06f0b082ba57c26b79407372e57cf2a1e28124f78e9479fe80322cf53420b"
+dependencies = [
+ "futures-core",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]

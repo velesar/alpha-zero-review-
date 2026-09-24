@@ -19,3 +19,6 @@ tracing-subscriber = { workspace = true }
 which = { workspace = true }
 tempfile = { workspace = true }
 clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+mcp-test-support = { path = "../mcp-test-support" }

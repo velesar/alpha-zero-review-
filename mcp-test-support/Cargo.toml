@@ -1,0 +1,11 @@
+[package]
+name = "mcp-test-support"
+version = "0.1.0"
+edition = "2021"
+description = "In-process MCP client harness for testing the audit servers over real tools/call messages"
+publish = false
+
+[dependencies]
+rmcp = { workspace = true, features = ["client"] }
+tokio = { workspace = true }
+serde_json = { workspace = true }

@@ -24,4 +24,5 @@ base64 = "0.22"
 rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
+mcp-test-support = { path = "../mcp-test-support" }
 tempfile = { workspace = true }
