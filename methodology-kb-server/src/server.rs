@@ -190,6 +190,16 @@ pub struct GetAcquisitionStatusInput {
     pub commit: String,
 }
 
+/// Bad commit references and unknown metrics are the caller's to fix
+fn acquisition_error(e: std::io::Error) -> rmcp::ErrorData {
+    let message = format!("Acquisition error: {}", e);
+    if e.kind() == std::io::ErrorKind::InvalidInput {
+        rmcp::ErrorData::invalid_params(message, None)
+    } else {
+        rmcp::ErrorData::internal_error(message, None)
+    }
+}
+
 fn parse_project_type(name: &str) -> Result<ProjectType, rmcp::ErrorData> {
     ProjectType::parse(name).ok_or_else(|| {
         rmcp::ErrorData::invalid_params(format!("Unknown project type: {}", name), None)
@@ -365,16 +375,19 @@ impl MethodologyKBServer {
 
             Ok(CallToolResult::success(vec![Content::text(json)]))
         } else {
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "Metric '{}' not found in knowledge base. Available metrics: {}",
-                input.metric,
-                self.kb
-                    .metrics
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ))]))
+            Err(rmcp::ErrorData::invalid_params(
+                format!(
+                    "Metric '{}' not found in knowledge base. Available metrics: {}",
+                    input.metric,
+                    self.kb
+                        .metrics
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                None,
+            ))
         }
     }
 
@@ -708,16 +721,19 @@ impl MethodologyKBServer {
             })?;
             Ok(CallToolResult::success(vec![Content::text(json)]))
         } else {
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "Category '{}' not found. Available categories: {}",
-                category,
-                self.kb
-                    .categories
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ))]))
+            Err(rmcp::ErrorData::invalid_params(
+                format!(
+                    "Category '{}' not found. Available categories: {}",
+                    category,
+                    self.kb
+                        .categories
+                        .keys()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                None,
+            ))
         }
     }
 
@@ -736,9 +752,7 @@ impl MethodologyKBServer {
         let data = self
             .acquisition
             .get_metric_data(&input.commit, &input.metric)
-            .map_err(|e| {
-                rmcp::ErrorData::internal_error(format!("Acquisition error: {}", e), None)
-            })?;
+            .map_err(acquisition_error)?;
 
         let json = serde_json::to_string_pretty(&data).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
@@ -770,9 +784,7 @@ impl MethodologyKBServer {
         let status = self
             .acquisition
             .get_acquisition_status(&input.commit)
-            .map_err(|e| {
-                rmcp::ErrorData::internal_error(format!("Acquisition error: {}", e), None)
-            })?;
+            .map_err(acquisition_error)?;
 
         let json = serde_json::to_string_pretty(&status).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)

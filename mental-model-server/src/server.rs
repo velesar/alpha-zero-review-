@@ -269,6 +269,18 @@ pub struct GetArtifactOutput {
     pub producer: String,
 }
 
+fn parse_base_severity(value: &str) -> Result<Severity, rmcp::ErrorData> {
+    ops::parse_severity(value).ok_or_else(|| {
+        rmcp::ErrorData::invalid_params(
+            format!(
+                "Invalid severity '{}': expected CRITICAL, HIGH, MEDIUM, LOW or INFO",
+                value
+            ),
+            None,
+        )
+    })
+}
+
 /// Map artifact store errors: bad input and missing artifacts are the
 /// caller's to fix (invalid_params); anything else is an internal error.
 fn artifact_error(context: &str, e: std::io::Error) -> rmcp::ErrorData {
@@ -526,19 +538,11 @@ impl MentalModelServer {
         input: Parameters<AddFindingInput>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
+        let base_severity = parse_base_severity(&input.base_severity)?;
         let mut model = self
             .model
             .write()
             .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
-
-        // Parse base severity
-        let base_severity = match input.base_severity.to_uppercase().as_str() {
-            "CRITICAL" => Severity::Critical,
-            "HIGH" => Severity::High,
-            "MEDIUM" => Severity::Medium,
-            "LOW" => Severity::Low,
-            _ => Severity::Info,
-        };
 
         // Get context for the file
         let context = model.get_context_for_path(&input.file_path);
@@ -849,16 +853,19 @@ impl MentalModelServer {
         let mut added_findings = Vec::new();
         let mut viewpoints_touched = std::collections::HashSet::new();
 
-        for finding_input in input.findings {
-            // Parse base severity
-            let base_severity = match finding_input.base_severity.to_uppercase().as_str() {
-                "CRITICAL" => Severity::Critical,
-                "HIGH" => Severity::High,
-                "MEDIUM" => Severity::Medium,
-                "LOW" => Severity::Low,
-                _ => Severity::Info,
-            };
+        // Validate the whole batch before storing any of it
+        let severities = input
+            .findings
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                parse_base_severity(&f.base_severity).map_err(|e| {
+                    rmcp::ErrorData::invalid_params(format!("findings[{}]: {}", i, e.message), None)
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
+        for (finding_input, base_severity) in input.findings.into_iter().zip(severities) {
             // Get context for the file
             let context = model.get_context_for_path(&finding_input.file_path);
 

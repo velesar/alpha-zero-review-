@@ -339,6 +339,7 @@ impl DataAcquisition {
         commit: &str,
     ) -> Result<AcquisitionStatus, std::io::Error> {
         let commit = self.resolve_commit(commit)?;
+        self.commit_dir(&commit)?;
 
         let mut available_metrics = Vec::new();
         let mut missing_metrics = Vec::new();
@@ -370,6 +371,7 @@ impl DataAcquisition {
         metric: &str,
     ) -> Result<MetricData, std::io::Error> {
         let commit = self.resolve_commit(commit)?;
+        self.commit_dir(&commit)?;
 
         // Find which tool provides this metric
         let mapping = self.get_tool_for_metric(metric);
@@ -405,20 +407,14 @@ impl DataAcquisition {
             });
         }
 
-        // Unknown metric
-        Ok(MetricData {
-            metric: metric.to_string(),
-            value: serde_json::json!({
-                "status": "unknown_metric",
-                "available_metrics": self.tool_mappings.iter()
-                    .flat_map(|m| m.metrics.clone())
-                    .collect::<Vec<_>>()
-            }),
-            source: DataSource::Unavailable,
-            produced_at: None,
-            producer: None,
-            commit: Some(commit),
-        })
+        Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "Unknown metric '{}'. Acquirable metrics: {}",
+                metric,
+                self.list_available_metrics().join(", ")
+            ),
+        ))
     }
 
     /// List all available metrics

@@ -111,8 +111,29 @@ pub fn json_to_tool_config(value: &serde_json::Value) -> ToolConfig {
 /// Parse SARIF from JSON Value (adapter function)
 ///
 /// This is an adapter that bridges serde_json to the Sarif domain type.
+///
+/// The `Sarif` type defaults every field, so without these checks any JSON
+/// object (even `{}`) would parse as an empty log and be merged silently.
 pub fn parse_sarif_json(value: serde_json::Value) -> Result<Sarif, crate::error::SarifError> {
-    serde_json::from_value(value).map_err(|e| crate::error::SarifError::ParseError(e.to_string()))
+    use crate::error::SarifError;
+
+    let obj = value
+        .as_object()
+        .ok_or_else(|| SarifError::InvalidSarif("expected a JSON object".to_string()))?;
+    if !obj.get("runs").is_some_and(|r| r.is_array()) {
+        return Err(SarifError::InvalidSarif(
+            "missing 'runs' array (not a SARIF log)".to_string(),
+        ));
+    }
+    if let Some(version) = obj.get("version") {
+        if !version.as_str().is_some_and(|v| v.starts_with("2.1")) {
+            return Err(SarifError::InvalidSarif(format!(
+                "unsupported SARIF version {} (expected 2.1.x)",
+                version
+            )));
+        }
+    }
+    serde_json::from_value(value).map_err(|e| SarifError::ParseError(e.to_string()))
 }
 
 /// Parse multiple SARIF JSON values into domain types
@@ -211,6 +232,15 @@ pub fn resolve_within(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn parse_sarif_json_rejects_non_sarif() {
+        assert!(parse_sarif_json(serde_json::json!({"not": "sarif"})).is_err());
+        assert!(parse_sarif_json(serde_json::json!("text")).is_err());
+        assert!(parse_sarif_json(serde_json::json!({"version": "1.0", "runs": []})).is_err());
+        assert!(parse_sarif_json(serde_json::json!({"version": "2.1.0", "runs": []})).is_ok());
+        assert!(parse_sarif_json(serde_json::json!({"runs": []})).is_ok());
+    }
+
     #[test]
     fn resolve_within_accepts_paths_under_a_root() {
         let root = tempfile::TempDir::new().unwrap();

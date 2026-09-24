@@ -1,13 +1,13 @@
 # Code Coverage Workflow
-# Generates coverage reports using cargo-tarpaulin and uploads to Codecov
+# Measures coverage with cargo-llvm-cov, enforces the floors in
+# scripts/check-coverage.py and uploads an lcov report to Codecov.
 
 name: Code Coverage
 
 on:
   push:
-    branches: [main, master]
+    branches: [claude/ai-code-audit-agent-YtOaA, main, master]
   pull_request:
-    branches: [main, master]
   workflow_dispatch:
 
 permissions:
@@ -18,7 +18,7 @@ env:
 
 jobs:
   coverage:
-    name: Generate Coverage Report
+    name: Coverage floors
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -27,66 +27,31 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview
+          # clippy: the sarif-tools MCP tests run clippy on a scratch crate
+          components: llvm-tools-preview, clippy
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-coverage-
-            ${{ runner.os }}-cargo-
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-tarpaulin
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Run tests with coverage
+        run: cargo llvm-cov --workspace --no-report
+
+      - name: Coverage reports
         run: |
-          cargo install cargo-tarpaulin --locked || cargo install cargo-tarpaulin
+          cargo llvm-cov report --json --summary-only --output-path cov.json
+          cargo llvm-cov report --lcov --output-path lcov.info
+          cargo llvm-cov report --summary-only | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Run coverage
-        run: |
-          cargo tarpaulin \
-            --all \
-            --out Xml \
-            --out Html \
-            --output-dir coverage \
-            --skip-clean \
-            --timeout 300 \
-            --ignore-tests \
-            --exclude-files "*/tests/*" "*/main.rs"
+      - name: Enforce coverage floors
+        run: python3 scripts/check-coverage.py cov.json
 
       - name: Upload coverage to Codecov
+        if: always()
         uses: codecov/codecov-action@v4
         with:
-          files: coverage/cobertura.xml
+          files: lcov.info
           fail_ci_if_error: false
-          verbose: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Upload coverage HTML report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage/
-          retention-days: 14
-
-      - name: Generate coverage summary
-        run: |
-          echo "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Coverage report generated successfully." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download the HTML report from the Artifacts section." >> $GITHUB_STEP_SUMMARY
-
-          # Extract coverage percentage if available
-          if [ -f coverage/cobertura.xml ]; then
-            COVERAGE=$(grep -oP 'line-rate="\K[^"]+' coverage/cobertura.xml | head -1)
-            if [ -n "$COVERAGE" ]; then
-              PERCENT=$(echo "$COVERAGE * 100" | bc -l | xargs printf "%.1f")
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "**Line Coverage:** ${PERCENT}%" >> $GITHUB_STEP_SUMMARY
-            fi
-          fi

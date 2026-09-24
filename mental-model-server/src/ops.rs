@@ -41,14 +41,16 @@ pub fn adjust_severity(base: &Severity, context: &FindingContext) -> Severity {
     Severity::from_score(new_score)
 }
 
-/// Parse severity string to Severity enum
-pub fn parse_severity(severity_str: &str) -> Severity {
+/// Parse a severity name (case-insensitive). Unknown names are `None`
+/// rather than silently becoming INFO, which would downgrade a finding.
+pub fn parse_severity(severity_str: &str) -> Option<Severity> {
     match severity_str.to_uppercase().as_str() {
-        "CRITICAL" => Severity::Critical,
-        "HIGH" => Severity::High,
-        "MEDIUM" => Severity::Medium,
-        "LOW" => Severity::Low,
-        _ => Severity::Info,
+        "CRITICAL" => Some(Severity::Critical),
+        "HIGH" => Some(Severity::High),
+        "MEDIUM" => Some(Severity::Medium),
+        "LOW" => Some(Severity::Low),
+        "INFO" => Some(Severity::Info),
+        _ => None,
     }
 }
 
@@ -274,11 +276,12 @@ mod tests {
 
     #[test]
     fn test_parse_severity() {
-        assert_eq!(parse_severity("CRITICAL"), Severity::Critical);
-        assert_eq!(parse_severity("high"), Severity::High);
-        assert_eq!(parse_severity("Medium"), Severity::Medium);
-        assert_eq!(parse_severity("LOW"), Severity::Low);
-        assert_eq!(parse_severity("unknown"), Severity::Info);
+        assert_eq!(parse_severity("CRITICAL"), Some(Severity::Critical));
+        assert_eq!(parse_severity("high"), Some(Severity::High));
+        assert_eq!(parse_severity("Medium"), Some(Severity::Medium));
+        assert_eq!(parse_severity("LOW"), Some(Severity::Low));
+        assert_eq!(parse_severity("info"), Some(Severity::Info));
+        assert_eq!(parse_severity("unknown"), None);
     }
 
     #[test]
