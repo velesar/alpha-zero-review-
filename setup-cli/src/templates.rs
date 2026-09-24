@@ -10,7 +10,8 @@ pub fn mcp_json(agent_dir: &Path, target_dir: &Path) -> String {
             "mental-model": {
                 "command": agent_dir.join("target/release/mental-model-server").to_string_lossy(),
                 "args": [
-                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy()
+                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy(),
+                    "--audit-path", target_dir.join(".audit").to_string_lossy()
                 ]
             },
             "methodology-kb": {
@@ -61,6 +62,8 @@ pub fn codex_mcp_servers(
                     .join(".audit/mental_model.yaml")
                     .to_string_lossy()
                     .to_string(),
+                "--audit-path".to_string(),
+                target_dir.join(".audit").to_string_lossy().to_string(),
             ],
         },
     );
@@ -114,7 +117,8 @@ pub fn cline_mcp_settings(agent_dir: &Path, target_dir: &Path) -> String {
             "mental-model": {
                 "command": agent_dir.join("target/release/mental-model-server").to_string_lossy(),
                 "args": [
-                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy()
+                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy(),
+                    "--audit-path", target_dir.join(".audit").to_string_lossy()
                 ],
                 "disabled": false
             },

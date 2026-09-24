@@ -304,3 +304,15 @@ fn test_server_creation_and_info() {
     assert!(info.instructions.is_some());
     assert!(info.instructions.unwrap().contains("Mental Model"));
 }
+
+#[test]
+fn test_server_uses_explicit_audit_path() {
+    let temp_dir = TempDir::new().unwrap();
+    let model_path = temp_dir.path().join("model.yaml");
+    let audit_dir = temp_dir.path().join("custom-audit");
+
+    let _server = MentalModelServer::with_audit_path(model_path, Some(audit_dir.clone()))
+        .expect("Failed to create server");
+
+    assert!(audit_dir.join("findings.db").exists());
+}

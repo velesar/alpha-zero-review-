@@ -273,6 +273,15 @@ impl MentalModelServer {
     /// - The model file exists but cannot be parsed (logged as warning, uses default)
     /// - The findings store cannot be created
     pub fn new(model_path: PathBuf) -> Result<Self> {
+        Self::with_audit_path(model_path, None)
+    }
+
+    /// Create a server with an explicit audit directory.
+    ///
+    /// When `audit_path` is `None`, the audit directory defaults to
+    /// `<project>/.audit`, where the project is taken from the model or the
+    /// current working directory.
+    pub fn with_audit_path(model_path: PathBuf, audit_path: Option<PathBuf>) -> Result<Self> {
         let model = if model_path.exists() {
             match fs::read_to_string(&model_path) {
                 Ok(content) => match serde_yaml::from_str(&content) {
@@ -306,8 +315,10 @@ impl MentalModelServer {
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
         };
 
+        let audit_dir = audit_path.unwrap_or_else(|| project_path.join(".audit"));
+
         // ADR-0007: Create findings store in .audit directory
-        let findings_db_path = project_path.join(".audit").join("findings.db");
+        let findings_db_path = audit_dir.join("findings.db");
         let findings_store = FindingsStore::new(&findings_db_path).map_err(|e| {
             anyhow::anyhow!(
                 "Failed to create findings store at {}: {}",
@@ -320,7 +331,7 @@ impl MentalModelServer {
             model_path,
             model: Arc::new(RwLock::new(model)),
             findings_store: Arc::new(Mutex::new(findings_store)),
-            artifact_store: Arc::new(ArtifactStore::new(project_path)),
+            artifact_store: Arc::new(ArtifactStore::with_audit_dir(project_path, audit_dir)),
             dirty: Arc::new(AtomicBool::new(false)), // ADR-0006
             tool_router: Self::tool_router(),
         })

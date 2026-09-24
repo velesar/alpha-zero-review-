@@ -23,6 +23,10 @@ struct Args {
     #[arg(long, default_value = "./mental_model.yaml")]
     model_path: PathBuf,
 
+    /// Directory for findings DB and artifacts (default: <project>/.audit)
+    #[arg(long)]
+    audit_path: Option<PathBuf>,
+
     /// Enable debug logging
     #[arg(long, short)]
     debug: bool,
@@ -46,7 +50,7 @@ async fn main() -> Result<()> {
     tracing::info!("Model path: {:?}", args.model_path);
 
     // Create the server
-    let server = server::MentalModelServer::new(args.model_path)?;
+    let server = server::MentalModelServer::with_audit_path(args.model_path, args.audit_path)?;
 
     // Run with stdio transport
     let service = server.serve(rmcp::transport::stdio()).await?;

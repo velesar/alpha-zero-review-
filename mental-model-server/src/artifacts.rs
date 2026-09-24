@@ -50,6 +50,7 @@ pub struct StoreArtifactMetadata {
 /// Artifact store implementation
 pub struct ArtifactStore {
     base_path: PathBuf,
+    audit_dir: PathBuf,
 }
 
 /// Known artifact types
@@ -68,12 +69,21 @@ const ARTIFACT_TYPES: &[&str] = &[
 impl ArtifactStore {
     /// Create a new artifact store
     pub fn new(base_path: PathBuf) -> Self {
-        Self { base_path }
+        let audit_dir = base_path.join(".audit");
+        Self::with_audit_dir(base_path, audit_dir)
+    }
+
+    /// Create an artifact store with an explicit audit directory
+    pub fn with_audit_dir(base_path: PathBuf, audit_dir: PathBuf) -> Self {
+        Self {
+            base_path,
+            audit_dir,
+        }
     }
 
     /// Get the artifacts directory path
     fn artifacts_dir(&self) -> PathBuf {
-        self.base_path.join(".audit").join("artifacts")
+        self.audit_dir.join("artifacts")
     }
 
     /// Get the directory for a specific commit
