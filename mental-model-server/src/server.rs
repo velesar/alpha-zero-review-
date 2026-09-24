@@ -433,7 +433,7 @@ impl MentalModelServer {
         model
             .apply_viewpoint(&input.viewpoint, input.data)
             .map_err(|e| {
-                rmcp::ErrorData::internal_error(format!("Apply viewpoint error: {}", e), None)
+                rmcp::ErrorData::invalid_params(format!("Apply viewpoint error: {}", e), None)
             })?;
 
         // Recalculate constraints

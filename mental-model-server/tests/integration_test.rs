@@ -162,8 +162,8 @@ fn test_derive_constraints() {
         .high_priority_paths
         .contains(&"src/auth/login.rs".to_string()));
 
-    // Check security focus paths
-    assert!(constraints
+    // Check security focus paths: API is a trust boundary, domain is not
+    assert!(!constraints
         .security_focus_paths
         .contains(&"src/domain".to_string()));
     assert!(constraints

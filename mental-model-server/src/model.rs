@@ -18,8 +18,8 @@ pub enum Confidence {
     Low,
 }
 
-/// Risk level for hotspots and findings
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+/// Risk level for hotspots and findings (not ordered: compare explicitly)
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Risk {
     Critical,
@@ -510,57 +510,41 @@ impl MentalModel {
         context
     }
 
-    /// Apply viewpoint data to the model
+    /// Apply viewpoint data to the model.
+    ///
+    /// Returns an error when the data does not match the viewpoint's schema
+    /// instead of silently keeping the previous (usually empty) section.
     pub fn apply_viewpoint(
         &mut self,
         viewpoint: &str,
         data: serde_json::Value,
     ) -> anyhow::Result<()> {
+        fn parse<T: serde::de::DeserializeOwned>(
+            viewpoint: &str,
+            data: serde_json::Value,
+        ) -> anyhow::Result<T> {
+            serde_json::from_value(data).map_err(|e| {
+                anyhow::anyhow!("{} data does not match its output schema: {}", viewpoint, e)
+            })
+        }
+
         match viewpoint {
-            "VP-F01" => {
-                if let Ok(tech_stack) = serde_json::from_value(data) {
-                    self.tech_stack = tech_stack;
-                }
-            }
-            "VP-F02" => {
-                if let Ok(structure) = serde_json::from_value(data) {
-                    self.structure = structure;
-                }
-            }
-            "VP-F03" => {
-                if let Ok(build_deploy) = serde_json::from_value(data) {
-                    self.build_deploy = build_deploy;
-                }
-            }
-            "VP-S01" => {
-                if let Ok(module_hierarchy) = serde_json::from_value(data) {
-                    self.module_hierarchy = module_hierarchy;
-                }
-            }
-            "VP-S02" => {
-                if let Ok(architecture) = serde_json::from_value(data) {
-                    self.architecture = architecture;
-                }
-            }
-            "VP-S03" => {
-                if let Ok(domain_model) = serde_json::from_value(data) {
-                    self.domain_model = domain_model;
-                }
-            }
-            "VP-S04" => {
-                if let Ok(entity_model) = serde_json::from_value(data) {
-                    self.entity_model = entity_model;
-                }
-            }
-            "VP-S05" => {
-                if let Ok(interface_surface) = serde_json::from_value(data) {
-                    self.interface_surface = interface_surface;
-                }
-            }
+            "VP-F01" => self.tech_stack = parse(viewpoint, data)?,
+            "VP-F02" => self.structure = parse(viewpoint, data)?,
+            "VP-F03" => self.build_deploy = parse(viewpoint, data)?,
+            "VP-S01" => self.module_hierarchy = parse(viewpoint, data)?,
+            "VP-S02" => self.architecture = parse(viewpoint, data)?,
+            "VP-S03" => self.domain_model = parse(viewpoint, data)?,
+            "VP-S04" => self.entity_model = parse(viewpoint, data)?,
+            "VP-S05" => self.interface_surface = parse(viewpoint, data)?,
             "VP-S06" => {
-                if let Ok(hotspots) = serde_json::from_value(data) {
-                    self.hotspots = hotspots;
-                }
+                // The VP-S06 skill nests hotspots under `hotspots` next to the
+                // dependency metrics; a bare `{files: [...]}` is accepted too.
+                let hotspots = match data.get("hotspots") {
+                    Some(nested) if nested.is_object() => nested.clone(),
+                    _ => data,
+                };
+                self.hotspots = parse(viewpoint, hotspots)?;
             }
             _ => {
                 // For quality viewpoints, findings are added via add_finding
@@ -598,14 +582,32 @@ pub fn derive_constraints(model: &MentalModel) -> Constraints {
         }
     }
 
-    // Domain layer → security focus
+    // Trust boundaries → security focus: layers that receive untrusted input
+    // or reach the filesystem, database, network or subprocesses, plus the
+    // files that implement the public interface surface.
+    const BOUNDARY_LAYER_HINTS: [&str; 12] = [
+        "inbound",
+        "adapter",
+        "api",
+        "handler",
+        "controller",
+        "presentation",
+        "interface",
+        "route",
+        "outbound",
+        "infrastructure",
+        "persistence",
+        "repository",
+    ];
     for layer in &model.architecture.layers {
-        let layer_name_lower = layer.name.to_lowercase();
-        if layer_name_lower == "domain" {
+        let name = layer.name.to_lowercase();
+        if BOUNDARY_LAYER_HINTS.iter().any(|hint| name.contains(hint)) {
             security_focus.extend(layer.paths.clone());
         }
-        if layer_name_lower.contains("adapter") || layer_name_lower.contains("api") {
-            security_focus.extend(layer.paths.clone());
+    }
+    for endpoint in &model.interface_surface.api_endpoints {
+        if !endpoint.file_path.is_empty() {
+            security_focus.push(endpoint.file_path.clone());
         }
     }
 
@@ -683,8 +685,64 @@ mod tests {
         assert!(constraints
             .high_priority_paths
             .contains(&"src/auth/handler.rs".to_string()));
-        assert!(constraints
+        // Domain is not a trust boundary
+        assert!(!constraints
             .security_focus_paths
             .contains(&"src/domain".to_string()));
+    }
+
+    #[test]
+    fn test_security_focus_covers_boundaries_and_endpoints() {
+        let mut model = MentalModel::new("t".to_string(), "/t".to_string());
+        for (name, path) in [
+            ("domain", "src/domain"),
+            ("inbound", "src/server.rs"),
+            ("infrastructure", "src/store.rs"),
+        ] {
+            model.architecture.layers.push(Layer {
+                name: name.to_string(),
+                paths: vec![path.to_string()],
+                purpose: String::new(),
+                allowed_dependencies: vec![],
+            });
+        }
+        model.interface_surface.api_endpoints.push(ApiEndpoint {
+            method: "POST".to_string(),
+            path: "/orders".to_string(),
+            handler: "create_order".to_string(),
+            file_path: "src/routes/orders.rs".to_string(),
+            line_number: None,
+            authentication: None,
+        });
+
+        let focus = derive_constraints(&model).security_focus_paths;
+        assert_eq!(
+            focus,
+            vec!["src/routes/orders.rs", "src/server.rs", "src/store.rs"]
+        );
+    }
+
+    #[test]
+    fn test_apply_viewpoint_s06_nested_hotspots() {
+        let mut model = MentalModel::default();
+        let data = serde_json::json!({
+            "total_modules": 3,
+            "hotspots": {"files": [
+                {"path": "src/server.rs", "score": 85.0, "risk": "HIGH", "churn": 13}
+            ]}
+        });
+        model.apply_viewpoint("VP-S06", data).unwrap();
+        assert_eq!(model.hotspots.files.len(), 1);
+        assert!(model.get_context_for_path("src/server.rs").is_hotspot);
+    }
+
+    #[test]
+    fn test_apply_viewpoint_rejects_mismatched_data() {
+        let mut model = MentalModel::default();
+        let err = model
+            .apply_viewpoint("VP-S06", serde_json::json!({"files": [{"path": 1}]}))
+            .unwrap_err();
+        assert!(err.to_string().contains("VP-S06"));
+        assert!(!model.completed_viewpoints.contains(&"VP-S06".to_string()));
     }
 }
