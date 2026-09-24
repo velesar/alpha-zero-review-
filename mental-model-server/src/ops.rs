@@ -169,7 +169,7 @@ pub fn synthesize_by_location(findings: &[Finding]) -> Vec<RootCause> {
         });
     }
 
-    root_causes.sort_by(|a, b| b.finding_count.cmp(&a.finding_count));
+    root_causes.sort_by_key(|rc| std::cmp::Reverse(rc.finding_count));
     root_causes.truncate(5);
 
     root_causes
