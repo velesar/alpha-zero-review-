@@ -62,8 +62,17 @@ impl Clone for MentalModelServer {
 pub struct UpdateViewpointInput {
     /// Viewpoint ID (e.g., "VP-F01", "VP-S02")
     pub viewpoint: String,
-    /// Viewpoint data as JSON object
+    /// Viewpoint output as a JSON object. VP-F01..VP-S06 are parsed into
+    /// typed sections (see get_viewpoint_schema); every payload is also kept
+    /// verbatim in the model's viewpoint_data.
     pub data: serde_json::Value,
+}
+
+/// Input for get_viewpoint_schema tool
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetViewpointSchemaInput {
+    /// Viewpoint ID (e.g., "VP-F01", "VP-S06")
+    pub viewpoint: String,
 }
 
 /// Input for get_context tool
@@ -452,7 +461,7 @@ impl MentalModelServer {
 
     /// Update the mental model with viewpoint results
     #[tool(
-        description = "Update the mental model with results from a viewpoint analysis. This will also recalculate derived constraints."
+        description = "Update the mental model with results from a viewpoint analysis and recalculate derived constraints. Data that does not match the viewpoint's schema is rejected; fields outside the typed section are kept but reported. Use get_viewpoint_schema for the exact shape."
     )]
     async fn update_viewpoint(
         &self,
@@ -464,7 +473,7 @@ impl MentalModelServer {
             .write()
             .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
-        model
+        let unused = model
             .apply_viewpoint(&input.viewpoint, input.data)
             .map_err(|e| {
                 rmcp::ErrorData::invalid_params(format!("Apply viewpoint error: {}", e), None)
@@ -483,10 +492,51 @@ impl MentalModelServer {
         self.flush_if_dirty()
             .map_err(|e| rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None))?;
 
+        let note = if unused.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\n\nFields kept as raw data but not used for context/constraints \
+                 (see get_viewpoint_schema): {}",
+                unused.join(", ")
+            )
+        };
+
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Viewpoint {} applied successfully.\n\nUpdated constraints:\n{}",
-            input.viewpoint, constraints_json
+            "Viewpoint {} applied successfully.{}\n\nUpdated constraints:\n{}",
+            input.viewpoint, note, constraints_json
         ))]))
+    }
+
+    /// JSON schema for a viewpoint's data
+    #[tool(
+        description = "Get the JSON schema that update_viewpoint parses a viewpoint's data into (VP-F01..VP-S06). Other viewpoints are stored as free-form data."
+    )]
+    async fn get_viewpoint_schema(
+        &self,
+        input: Parameters<GetViewpointSchemaInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let viewpoint = input.0.viewpoint;
+        let text = match crate::model::viewpoint_schema(&viewpoint) {
+            Some(schema) => {
+                let json = serde_json::to_string_pretty(&schema).map_err(|e| {
+                    rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+                })?;
+                let note = if viewpoint == "VP-S06" {
+                    "Schema of the `hotspots` object; send it nested as {\"hotspots\": {...}} \
+                     next to the dependency metrics (a bare {\"files\": [...]} also works).\n\n"
+                } else {
+                    ""
+                };
+                format!("{}{}", note, json)
+            }
+            None => format!(
+                "{} has no typed section: its data is stored as-is in viewpoint_data \
+                 (findings go through add_finding / add_findings).",
+                viewpoint
+            ),
+        };
+        Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
     /// Get business context for a file path
@@ -954,7 +1004,7 @@ impl MentalModelServer {
 
     /// Get a specific section of the mental model
     #[tool(
-        description = "Get a specific section of the mental model instead of the full model. Sections: project, tech_stack, structure, build_deploy, module_hierarchy, architecture, domain_model, entity_model, interface_surface, hotspots, constraints, findings, root_causes, completed_viewpoints. More efficient than get_model when only one section is needed. (ADR-0005)"
+        description = "Get a specific section of the mental model instead of the full model. Sections: project, tech_stack, structure, build_deploy, module_hierarchy, architecture, domain_model, entity_model, interface_surface, hotspots, constraints, findings, root_causes, completed_viewpoints, viewpoint_data (raw data of every viewpoint). More efficient than get_model when only one section is needed. (ADR-0005)"
     )]
     async fn get_model_section(
         &self,
@@ -995,9 +1045,10 @@ impl MentalModelServer {
             "constraints" => serde_json::to_value(&model.constraints),
             "root_causes" => serde_json::to_value(&model.root_causes),
             "completed_viewpoints" => serde_json::to_value(&model.completed_viewpoints),
+            "viewpoint_data" => serde_json::to_value(&model.viewpoint_data),
             _ => {
                 return Err(rmcp::ErrorData::invalid_params(
-                    format!("Unknown section: '{}'. Valid sections: project, tech_stack, structure, build_deploy, module_hierarchy, architecture, domain_model, entity_model, interface_surface, hotspots, constraints, findings, root_causes, completed_viewpoints", input.section),
+                    format!("Unknown section: '{}'. Valid sections: project, tech_stack, structure, build_deploy, module_hierarchy, architecture, domain_model, entity_model, interface_surface, hotspots, constraints, findings, root_causes, completed_viewpoints, viewpoint_data", input.section),
                     None,
                 ));
             }

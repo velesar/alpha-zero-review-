@@ -302,10 +302,10 @@ pub fn clinerules() -> &'static str {
 This project is configured for code auditing using the AI Code Audit Agent methodology with MCP servers.
 
 ## MCP Servers Available
-- **mental-model**: Central audit artifact (22 tools) - init_model, get_model, add_finding, synthesize, etc.
+- **mental-model**: Central audit artifact (23 tools) - init_model, get_model, add_finding, synthesize, etc.
 - **methodology-kb**: Metrics & thresholds (11 tools) - lookup_metric, classify_finding, check_compliance
-- **sarif-tools**: Code analysis (3 tools) - list_available_tools, merge_sarif
-- **codegraph**: Code intelligence (11 tools) - load_index, load_project_indexes, find_symbol, get_impact
+- **sarif-tools**: Code analysis (6 tools) - run_tool, normalize_sarif, merge_sarif
+- **codegraph**: Code intelligence (10 tools) - load_index, load_project_indexes, find_symbol, get_impact
 
 ## Audit Instructions
 
@@ -342,10 +342,10 @@ Run a full code audit using the viewpoints framework
 
 ## Available MCP Servers
 
-- **mental-model**: Central audit artifact management (22 tools)
+- **mental-model**: Central audit artifact management (23 tools)
 - **methodology-kb**: Metrics, thresholds, classification (11 tools)
-- **sarif-tools**: Code analysis tools (3 tools)
-- **codegraph**: SCIP-based code intelligence (11 tools)
+- **sarif-tools**: Code analysis tools (6 tools)
+- **codegraph**: SCIP-based code intelligence (10 tools)
 
 ## Audit Workflow
 
@@ -406,11 +406,11 @@ Skills directory: {}/skills/
 
 | Server | Tools | Purpose |
 |--------|-------|---------|
-| mental-model | 22 | Central audit artifact, findings, synthesis |
+| mental-model | 23 | Central audit artifact, findings, synthesis |
 | methodology-kb | 11 | Metrics, thresholds, classification |
-| sarif-tools | 3 | Code analysis tools |
-| codegraph | 11 | SCIP code intelligence, auto-indexing |
-| **Total** | **47** | |
+| sarif-tools | 6 | Code analysis tools |
+| codegraph | 10 | SCIP code intelligence, auto-indexing |
+| **Total** | **50** | |
 "#,
         agent_dir.display(),
         agent_dir.display(),

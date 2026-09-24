@@ -74,7 +74,7 @@ fn finding(title: &str, file: &str, severity: &str, category: &str) -> Value {
 #[tokio::test]
 async fn lists_all_tools() {
     let f = fixture().await;
-    assert_eq!(f.client.tool_names().await.len(), 22);
+    assert_eq!(f.client.tool_names().await.len(), 23);
 }
 
 #[tokio::test]
@@ -282,4 +282,56 @@ async fn artifacts_and_export() {
     c.err("export_findings", json!({"output_path": "../outside.json"}))
         .await;
     assert!(!f.dir.path().join("outside.json").exists());
+}
+
+#[tokio::test]
+async fn viewpoint_data_is_kept_and_schemas_are_discoverable() {
+    let f = fixture().await;
+    let c = &f.client;
+
+    // VP-S06 metrics outside the typed hotspots section are kept and reported
+    let text = c
+        .ok(
+            "update_viewpoint",
+            json!({"viewpoint": "VP-S06", "data": {
+                "total_modules": 12,
+                "circular_dependencies": {"count": 0},
+                "hotspots": {"files": [{"path": "src/a.rs", "score": 50.0, "risk": "MEDIUM"}]}
+            }}),
+        )
+        .await;
+    assert!(
+        text.contains("circular_dependencies, total_modules"),
+        "unused fields reported: {text}"
+    );
+
+    // Viewpoints without a typed section are stored, not dropped
+    c.ok(
+        "update_viewpoint",
+        json!({"viewpoint": "VP-S07", "data": {"explicit_adrs": [{"id": "ADR-0001"}]}}),
+    )
+    .await;
+
+    let raw = c
+        .ok_json("get_model_section", json!({"section": "viewpoint_data"}))
+        .await;
+    assert_eq!(raw["VP-S06"]["total_modules"], 12);
+    assert_eq!(raw["VP-S07"]["explicit_adrs"][0]["id"], "ADR-0001");
+    let hotspots = c
+        .ok_json("get_model_section", json!({"section": "hotspots"}))
+        .await;
+    assert_eq!(hotspots["files"][0]["path"], "src/a.rs");
+
+    let schema = c
+        .ok("get_viewpoint_schema", json!({"viewpoint": "VP-F01"}))
+        .await;
+    assert!(schema.contains("primary_language"));
+    let s06 = c
+        .ok("get_viewpoint_schema", json!({"viewpoint": "VP-S06"}))
+        .await;
+    assert!(s06.contains("nested") && s06.contains("\"files\""));
+    assert!(c
+        .ok("get_viewpoint_schema", json!({"viewpoint": "VP-S07"}))
+        .await
+        .contains("no typed section"));
 }

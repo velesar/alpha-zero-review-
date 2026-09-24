@@ -71,6 +71,7 @@ Manages the central mental model artifact and commit-indexed artifact storage.
 | `get_findings_summary` | Counts by severity, category and viewpoint |
 | `export_findings` | Export all findings (JSON) |
 | `get_completed_viewpoints` | List viewpoints already recorded in the model |
+| `get_viewpoint_schema` | JSON schema `update_viewpoint` expects for a viewpoint |
 | `synthesize` | Cluster findings into root causes |
 | `store_artifact` | Store SARIF/SCIP artifact for commit |
 | `get_artifact` | Retrieve stored artifact |

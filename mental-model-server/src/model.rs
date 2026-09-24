@@ -6,7 +6,7 @@
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Confidence level for analysis results
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -426,6 +426,11 @@ pub struct MentalModel {
     pub root_causes: Vec<RootCause>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completed_viewpoints: Vec<String>,
+    /// Raw data of every viewpoint as submitted, so fields outside the
+    /// typed sections (dependency metrics, ADRs, optional viewpoints) are
+    /// kept for reporting instead of being dropped
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub viewpoint_data: BTreeMap<String, serde_json::Value>,
 }
 
 impl Default for MentalModel {
@@ -452,8 +457,53 @@ impl Default for MentalModel {
             // ADR-0007: findings stored in separate SQLite store
             root_causes: Vec::new(),
             completed_viewpoints: Vec::new(),
+            viewpoint_data: BTreeMap::new(),
         }
     }
+}
+
+/// JSON schema of the typed model section a viewpoint's data is parsed
+/// into, or `None` for viewpoints stored only as raw data (VP-S07+, quality
+/// viewpoints). For VP-S06 this is the schema of the nested `hotspots`.
+pub fn viewpoint_schema(viewpoint: &str) -> Option<schemars::Schema> {
+    Some(match viewpoint {
+        "VP-F01" => schemars::schema_for!(TechStack),
+        "VP-F02" => schemars::schema_for!(Structure),
+        "VP-F03" => schemars::schema_for!(BuildDeploy),
+        "VP-S01" => schemars::schema_for!(ModuleHierarchy),
+        "VP-S02" => schemars::schema_for!(Architecture),
+        "VP-S03" => schemars::schema_for!(DomainModel),
+        "VP-S04" => schemars::schema_for!(EntityModel),
+        "VP-S05" => schemars::schema_for!(InterfaceSurface),
+        "VP-S06" => schemars::schema_for!(Hotspots),
+        _ => return None,
+    })
+}
+
+/// Top-level fields of `data` that the viewpoint's typed section does not
+/// use (they are still kept in `viewpoint_data`)
+fn unused_fields(viewpoint: &str, data: &serde_json::Value) -> Vec<String> {
+    let Some(schema) = viewpoint_schema(viewpoint) else {
+        return Vec::new();
+    };
+    let known: Vec<&str> = schema
+        .get("properties")
+        .and_then(|p| p.as_object())
+        .map(|p| p.keys().map(|k| k.as_str()).collect())
+        .unwrap_or_default();
+    let mut unused: Vec<String> = data
+        .as_object()
+        .map(|o| {
+            o.keys()
+                .filter(|k| !known.contains(&k.as_str()))
+                // VP-S06 nests the typed section under `hotspots`
+                .filter(|k| !(viewpoint == "VP-S06" && k.as_str() == "hotspots"))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    unused.sort();
+    unused
 }
 
 impl MentalModel {
@@ -514,11 +564,15 @@ impl MentalModel {
     ///
     /// Returns an error when the data does not match the viewpoint's schema
     /// instead of silently keeping the previous (usually empty) section.
+    /// On success returns the top-level fields that are not part of the typed
+    /// section; the full payload is always kept in `viewpoint_data`.
     pub fn apply_viewpoint(
         &mut self,
         viewpoint: &str,
         data: serde_json::Value,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Vec<String>> {
+        let raw = data.clone();
+        let unused = unused_fields(viewpoint, &data);
         fn parse<T: serde::de::DeserializeOwned>(
             viewpoint: &str,
             data: serde_json::Value,
@@ -547,17 +601,20 @@ impl MentalModel {
                 self.hotspots = parse(viewpoint, hotspots)?;
             }
             _ => {
-                // For quality viewpoints, findings are added via add_finding
-                tracing::debug!("Viewpoint {} uses findings-based updates", viewpoint);
+                // No typed section (VP-S07+, quality viewpoints): kept as raw
+                // data only; quality findings go through add_finding(s)
+                tracing::debug!("Viewpoint {} stored as raw data", viewpoint);
             }
         }
+
+        self.viewpoint_data.insert(viewpoint.to_string(), raw);
 
         // Mark viewpoint as completed
         if !self.completed_viewpoints.contains(&viewpoint.to_string()) {
             self.completed_viewpoints.push(viewpoint.to_string());
         }
 
-        Ok(())
+        Ok(unused)
     }
 }
 
