@@ -7,7 +7,7 @@
 //! Adapters bridge the framework layer (serde_json) to domain types,
 //! keeping the domain layer pure.
 
-use crate::domain::{ConfigValue, RuleMapping, RuleMappings, ToolConfig};
+use crate::domain::{RuleMapping, RuleMappings};
 use crate::error::NormalizeError;
 use crate::sarif::Sarif;
 use rmcp::model::{CallToolResult, Content};
@@ -44,69 +44,6 @@ pub fn format_prefixed_json_response<T: Serialize>(
 // ============================================================================
 // Adapter Functions: JSON/YAML to Domain Types
 // ============================================================================
-
-/// Convert JSON Value to ToolConfig domain type
-///
-/// This is an adapter function that bridges serde_json to the domain layer.
-pub fn json_to_tool_config(value: &serde_json::Value) -> ToolConfig {
-    let mut config = ToolConfig::new();
-
-    // Extract config source (rules/config)
-    if let Some(rules) = value.get("rules").and_then(|v| v.as_str()) {
-        config.config_source = Some(rules.to_string());
-    } else if let Some(cfg_file) = value.get("config").and_then(|v| v.as_str()) {
-        config.config_source = Some(cfg_file.to_string());
-    }
-
-    // Extract severity
-    if let Some(severity) = value.get("severity").and_then(|v| v.as_str()) {
-        config.severity = Some(severity.to_string());
-    }
-
-    // Extract exclude patterns
-    if let Some(exclude) = value.get("exclude").and_then(|v| v.as_array()) {
-        for pattern in exclude {
-            if let Some(p) = pattern.as_str() {
-                config.exclude_patterns.push(p.to_string());
-            }
-        }
-    } else if let Some(exclude) = value.get("exclude").and_then(|v| v.as_str()) {
-        // Single string exclude
-        config.exclude_patterns.push(exclude.to_string());
-    }
-
-    // Extract common options
-    for (key, val) in value.as_object().iter().flat_map(|o| o.iter()) {
-        // Skip already processed keys
-        if matches!(key.as_str(), "rules" | "config" | "severity" | "exclude") {
-            continue;
-        }
-
-        let config_val = match val {
-            serde_json::Value::String(s) => Some(ConfigValue::String(s.clone())),
-            serde_json::Value::Bool(b) => Some(ConfigValue::Bool(*b)),
-            serde_json::Value::Number(n) => n.as_f64().map(ConfigValue::Number),
-            serde_json::Value::Array(arr) => {
-                let strings: Vec<String> = arr
-                    .iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect();
-                if !strings.is_empty() {
-                    Some(ConfigValue::Array(strings))
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        };
-
-        if let Some(cv) = config_val {
-            config.options.insert(key.clone(), cv);
-        }
-    }
-
-    config
-}
 
 /// Parse SARIF from JSON Value (adapter function)
 ///
@@ -307,31 +244,6 @@ mod tests {
         };
         let result = format_prefixed_json_response("Status:", &data).unwrap();
         assert!(!result.content.is_empty());
-    }
-
-    // Adapter function tests
-    #[test]
-    fn test_json_to_tool_config_empty() {
-        let json = serde_json::json!({});
-        let config = json_to_tool_config(&json);
-        assert!(config.config_source.is_none());
-        assert!(config.severity.is_none());
-        assert!(config.exclude_patterns.is_empty());
-    }
-
-    #[test]
-    fn test_json_to_tool_config_with_values() {
-        let json = serde_json::json!({
-            "config": "auto",
-            "severity": "error",
-            "exclude": ["*.test.rs", "tests/"],
-            "all_targets": true
-        });
-        let config = json_to_tool_config(&json);
-        assert_eq!(config.config_source, Some("auto".to_string()));
-        assert_eq!(config.severity, Some("error".to_string()));
-        assert_eq!(config.exclude_patterns, vec!["*.test.rs", "tests/"]);
-        assert!(config.options.contains_key("all_targets"));
     }
 
     #[test]
