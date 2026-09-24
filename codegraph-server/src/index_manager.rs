@@ -180,17 +180,19 @@ impl IndexManager {
             bail!("Not a git repository");
         }
 
-        let commit = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string();
+        let commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
         Ok(commit[..12.min(commit.len())].to_string())
     }
 
     /// Read commit hash from index metadata
     pub fn get_index_commit(&self, lang: Language) -> Option<String> {
-        let meta_path = self.index_dir.join(format!("{}.meta", lang.index_filename()));
-        std::fs::read_to_string(meta_path).ok().map(|s| s.trim().to_string())
+        let meta_path = self
+            .index_dir
+            .join(format!("{}.meta", lang.index_filename()));
+        std::fs::read_to_string(meta_path)
+            .ok()
+            .map(|s| s.trim().to_string())
     }
 
     /// Check if index is fresh (matches current commit)
@@ -226,7 +228,10 @@ impl IndexManager {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("Indexer failed: {}", stderr.lines().take(3).collect::<Vec<_>>().join("\n"));
+            bail!(
+                "Indexer failed: {}",
+                stderr.lines().take(3).collect::<Vec<_>>().join("\n")
+            );
         }
 
         // Find and move the index file
@@ -241,7 +246,9 @@ impl IndexManager {
 
         // Write commit metadata
         if let Ok(commit) = self.get_current_commit() {
-            let meta_path = self.index_dir.join(format!("{}.meta", lang.index_filename()));
+            let meta_path = self
+                .index_dir
+                .join(format!("{}.meta", lang.index_filename()));
             let _ = std::fs::write(meta_path, commit);
         }
 

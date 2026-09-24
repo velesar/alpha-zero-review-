@@ -18,6 +18,52 @@ description: |
   Rust's trait system maps directly to the "ports" concept, and Cargo workspaces 
   enforce architectural boundaries at compile time.
 
+# Layers and dependency rules consumed by methodology-kb-server
+# (check_compliance). Derived from structure_patterns below.
+layers:
+  - name: domain
+    aliases: [core, model, models, entities]
+    typical_paths: [src/domain, crates/domain, domain/src]
+    purpose: "Models, repository traits (outbound ports), domain errors"
+    allowed_dependencies: []
+  - name: application
+    aliases: [service, services, usecases, use_cases]
+    typical_paths: [src/application, src/services, crates/application]
+    purpose: "Use cases and service orchestration (inbound ports)"
+    allowed_dependencies: [domain]
+  - name: inbound
+    aliases: [handlers, http, api, cli, server]
+    typical_paths: [src/inbound, src/handlers, src/server.rs, crates/server]
+    purpose: "HTTP handlers, CLI, protocol listeners (inbound adapters)"
+    allowed_dependencies: [domain, application]
+  - name: outbound
+    aliases: [infrastructure, infra, adapters, repository, persistence]
+    typical_paths: [src/outbound, src/infrastructure, crates/infrastructure]
+    purpose: "Database implementations, external API clients (outbound adapters)"
+    allowed_dependencies: [domain, application]
+
+dependency_rules:
+  - from: domain
+    to: application
+    allowed: false
+    reason: Domain must not depend on use-case orchestration
+  - from: domain
+    to: inbound
+    allowed: false
+    reason: Domain must not know about handlers or frameworks
+  - from: domain
+    to: outbound
+    allowed: false
+    reason: Domain must not import database or external client code
+  - from: application
+    to: inbound
+    allowed: false
+    reason: Use cases must not depend on delivery mechanisms
+  - from: inbound
+    to: outbound
+    allowed: false
+    reason: Handlers should go through ports, not concrete adapters
+
 core_principles:
   - id: TRAIT_AS_PORT
     name: "Traits Define Ports"

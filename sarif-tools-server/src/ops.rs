@@ -165,7 +165,10 @@ pub fn normalize_sarif(sarif: Sarif, mappings: &RuleMappings) -> NormalizeSarifO
 }
 
 /// Get configuration for a specific tool
-pub fn get_tool_config(registry: &ToolRegistry, tool_name: &str) -> Result<ToolConfigOutput, ToolError> {
+pub fn get_tool_config(
+    registry: &ToolRegistry,
+    tool_name: &str,
+) -> Result<ToolConfigOutput, ToolError> {
     let runner = registry
         .get(tool_name)
         .ok_or_else(|| ToolError::UnknownTool(tool_name.to_string()))?;

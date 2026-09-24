@@ -24,3 +24,4 @@ tempfile = { workspace = true }
 
 [build-dependencies]
 prost-build = { workspace = true }
+protoc-bin-vendored = "3"

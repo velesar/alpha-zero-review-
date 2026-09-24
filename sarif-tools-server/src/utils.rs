@@ -16,8 +16,9 @@ use std::path::Path;
 
 /// Format a serializable value as a pretty-printed JSON response
 pub fn format_json_response<T: Serialize>(data: &T) -> Result<CallToolResult, rmcp::ErrorData> {
-    let json = serde_json::to_string_pretty(data)
-        .map_err(|e| rmcp::ErrorData::internal_error(format!("JSON serialization error: {}", e), None))?;
+    let json = serde_json::to_string_pretty(data).map_err(|e| {
+        rmcp::ErrorData::internal_error(format!("JSON serialization error: {}", e), None)
+    })?;
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
@@ -31,8 +32,9 @@ pub fn format_prefixed_json_response<T: Serialize>(
     prefix: &str,
     data: &T,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    let json = serde_json::to_string_pretty(data)
-        .map_err(|e| rmcp::ErrorData::internal_error(format!("JSON serialization error: {}", e), None))?;
+    let json = serde_json::to_string_pretty(data).map_err(|e| {
+        rmcp::ErrorData::internal_error(format!("JSON serialization error: {}", e), None)
+    })?;
     Ok(CallToolResult::success(vec![Content::text(format!(
         "{}\n\n{}",
         prefix, json
@@ -110,12 +112,13 @@ pub fn json_to_tool_config(value: &serde_json::Value) -> ToolConfig {
 ///
 /// This is an adapter that bridges serde_json to the Sarif domain type.
 pub fn parse_sarif_json(value: serde_json::Value) -> Result<Sarif, crate::error::SarifError> {
-    serde_json::from_value(value)
-        .map_err(|e| crate::error::SarifError::ParseError(e.to_string()))
+    serde_json::from_value(value).map_err(|e| crate::error::SarifError::ParseError(e.to_string()))
 }
 
 /// Parse multiple SARIF JSON values into domain types
-pub fn parse_sarif_values(values: Vec<serde_json::Value>) -> Result<Vec<Sarif>, crate::error::SarifError> {
+pub fn parse_sarif_values(
+    values: Vec<serde_json::Value>,
+) -> Result<Vec<Sarif>, crate::error::SarifError> {
     values.into_iter().map(parse_sarif_json).collect()
 }
 
@@ -144,11 +147,23 @@ fn yaml_to_rule_mappings(yaml_value: &serde_yaml::Value) -> Result<RuleMappings,
                 item.get("rule_id").and_then(|v| v.as_str()),
             ) {
                 let mapping = RuleMapping {
-                    category: item.get("category").and_then(|v| v.as_str()).map(String::from),
-                    subcategory: item.get("subcategory").and_then(|v| v.as_str()).map(String::from),
+                    category: item
+                        .get("category")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                    subcategory: item
+                        .get("subcategory")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
                     cwe: item.get("cwe").and_then(|v| v.as_str()).map(String::from),
-                    base_severity: item.get("base_severity").and_then(|v| v.as_str()).map(String::from),
-                    description: item.get("description").and_then(|v| v.as_str()).map(String::from),
+                    base_severity: item
+                        .get("base_severity")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
+                    description: item
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .map(String::from),
                 };
                 mappings.insert(tool, rule_id, mapping);
             }

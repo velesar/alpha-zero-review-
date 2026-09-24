@@ -3,9 +3,12 @@
 //! These tests verify the core functionality of the SARIF tools
 //! including tool registry, SARIF parsing, and merging.
 
-use sarif_tools_server::sarif::{Sarif, Run, Tool, ToolDriver, Result as SarifResult, Message, Location, PhysicalLocation, ArtifactLocation};
-use sarif_tools_server::tools::ToolRegistry;
 use sarif_tools_server::runner::{detect_tool, parse_sarif};
+use sarif_tools_server::sarif::{
+    ArtifactLocation, Location, Message, PhysicalLocation, Result as SarifResult, Run, Sarif, Tool,
+    ToolDriver,
+};
+use sarif_tools_server::tools::ToolRegistry;
 
 #[test]
 fn test_tool_registry_creation() {
@@ -100,7 +103,10 @@ fn test_sarif_result_count() {
             SarifResult {
                 rule_id: "R001".to_string(),
                 level: Some("warning".to_string()),
-                message: Message { text: "Test 1".to_string(), markdown: None },
+                message: Message {
+                    text: "Test 1".to_string(),
+                    markdown: None,
+                },
                 locations: vec![],
                 fingerprints: None,
                 properties: serde_json::Value::Null,
@@ -108,7 +114,10 @@ fn test_sarif_result_count() {
             SarifResult {
                 rule_id: "R002".to_string(),
                 level: Some("error".to_string()),
-                message: Message { text: "Test 2".to_string(), markdown: None },
+                message: Message {
+                    text: "Test 2".to_string(),
+                    markdown: None,
+                },
                 locations: vec![],
                 fingerprints: None,
                 properties: serde_json::Value::Null,
@@ -188,7 +197,10 @@ fn test_sarif_with_locations() {
             results: vec![SarifResult {
                 rule_id: "R001".to_string(),
                 level: Some("warning".to_string()),
-                message: Message { text: "Test".to_string(), markdown: None },
+                message: Message {
+                    text: "Test".to_string(),
+                    markdown: None,
+                },
                 locations: vec![Location {
                     physical_location: PhysicalLocation {
                         artifact_location: ArtifactLocation {
@@ -207,7 +219,10 @@ fn test_sarif_with_locations() {
 
     assert_eq!(sarif.result_count(), 1);
     assert_eq!(
-        sarif.runs[0].results[0].locations[0].physical_location.artifact_location.uri,
+        sarif.runs[0].results[0].locations[0]
+            .physical_location
+            .artifact_location
+            .uri,
         "src/main.rs"
     );
 }
@@ -216,8 +231,8 @@ fn test_sarif_with_locations() {
 // Server Handler Tests
 // ============================================================================
 
-use sarif_tools_server::server::SarifToolsServer;
 use rmcp::handler::server::ServerHandler;
+use sarif_tools_server::server::SarifToolsServer;
 
 #[test]
 fn test_server_creation_and_info() {

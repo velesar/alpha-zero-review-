@@ -8,8 +8,10 @@
 ## Setup (One-time)
 
 ```bash
-# Clone the repository
-cd /home/velesar/projects/alpha-zero-review-
+# Clone the repository and remember where it lives
+git clone https://github.com/velesar/alpha-zero-review-.git
+export AGENT_DIR="$(pwd)/alpha-zero-review-"
+cd $AGENT_DIR
 
 # Build MCP servers
 cargo build --release
@@ -34,17 +36,19 @@ claude
 
 ### Option 2: Manual Setup
 
-1. Copy `.mcp.json` to the target project:
+1. Create `.mcp.json` in the target project (replace `$AGENT_DIR` with the absolute
+   path of the agent checkout — JSON does not expand variables; `setup-audit`
+   generates this file for you with all four servers):
 ```json
 {
   "mcpServers": {
     "mental-model": {
-      "command": "/home/velesar/projects/alpha-zero-review-/target/release/mental-model-server",
+      "command": "$AGENT_DIR/target/release/mental-model-server",
       "args": ["--model-path", "./mental_model.yaml"]
     },
     "methodology-kb": {
-      "command": "/home/velesar/projects/alpha-zero-review-/target/release/methodology-kb-server",
-      "args": ["--kb-path", "/home/velesar/projects/alpha-zero-review-/methodology_kb/"]
+      "command": "$AGENT_DIR/target/release/methodology-kb-server",
+      "args": ["--kb-path", "$AGENT_DIR/methodology_kb/"]
     }
   }
 }
@@ -62,14 +66,14 @@ Once Claude CLI is running, ask:
 
 ```
 Run a full code audit using the viewpoints framework.
-Start by reading /home/velesar/projects/alpha-zero-review-/skills/vp-f01-tech-stack/SKILL.md
+Start by reading $AGENT_DIR/skills/vp-f01-tech-stack/SKILL.md
 ```
 
 Or for step-by-step:
 
 ```
 Let's audit this codebase. Start with VP-F01: Technology Stack Analysis.
-Read the instructions from /home/velesar/projects/alpha-zero-review-/skills/vp-f01-tech-stack/SKILL.md
+Read the instructions from $AGENT_DIR/skills/vp-f01-tech-stack/SKILL.md
 ```
 
 ## Audit Workflow
@@ -148,7 +152,7 @@ After completing all viewpoints:
 
 1. Check if servers are built:
    ```bash
-   ls -la /home/velesar/projects/alpha-zero-review-/target/release/
+   ls -la $AGENT_DIR/target/release/
    ```
 
 2. Test server manually:
@@ -167,7 +171,7 @@ Verify MCP servers are listed in `/mcp` command output.
 To test the agent on itself:
 
 ```bash
-cd /home/velesar/projects/alpha-zero-review-
+cd $AGENT_DIR
 claude
 
 # Then:

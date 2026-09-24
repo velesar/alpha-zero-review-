@@ -366,9 +366,8 @@ mod tests {
             dependency_rules: vec![],
         };
 
-        let violations = vec![
-            DetectedViolation::new("test_rule", "Test violation").with_severity("HIGH"),
-        ];
+        let violations =
+            vec![DetectedViolation::new("test_rule", "Test violation").with_severity("HIGH")];
 
         let result = check_compliance(&standard, &["domain".to_string()], &violations);
 

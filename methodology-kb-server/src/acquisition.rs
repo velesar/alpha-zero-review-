@@ -143,7 +143,9 @@ impl DataAcquisition {
 
     /// Get tool for a metric
     pub fn get_tool_for_metric(&self, metric: &str) -> Option<&ToolMapping> {
-        self.tool_mappings.iter().find(|m| m.metrics.contains(&metric.to_string()))
+        self.tool_mappings
+            .iter()
+            .find(|m| m.metrics.contains(&metric.to_string()))
     }
 
     /// Check if artifact exists for commit
@@ -154,11 +156,17 @@ impl DataAcquisition {
             "coverage" => "json",
             _ => "sarif",
         };
-        commit_dir.join(format!("{}.{}", artifact_type, ext)).exists()
+        commit_dir
+            .join(format!("{}.{}", artifact_type, ext))
+            .exists()
     }
 
     /// Load artifact data
-    pub fn load_artifact(&self, commit: &str, artifact_type: &str) -> Result<(serde_json::Value, ArtifactMeta), std::io::Error> {
+    pub fn load_artifact(
+        &self,
+        commit: &str,
+        artifact_type: &str,
+    ) -> Result<(serde_json::Value, ArtifactMeta), std::io::Error> {
         let commit_dir = self.artifacts_dir().join(commit);
         let ext = match artifact_type {
             "scip" => "scip",
@@ -179,7 +187,8 @@ impl DataAcquisition {
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
             let artifacts = meta_yaml.get("artifacts").and_then(|a| a.as_mapping());
-            let artifact_info = artifacts.and_then(|a| a.get(serde_yaml::Value::String(artifact_type.to_string())));
+            let artifact_info =
+                artifacts.and_then(|a| a.get(serde_yaml::Value::String(artifact_type.to_string())));
 
             ArtifactMeta {
                 produced_at: artifact_info
@@ -203,75 +212,97 @@ impl DataAcquisition {
     }
 
     /// Extract metric value from SARIF data
-    pub fn extract_metric_from_sarif(&self, sarif: &serde_json::Value, metric: &str) -> serde_json::Value {
+    pub fn extract_metric_from_sarif(
+        &self,
+        sarif: &serde_json::Value,
+        metric: &str,
+    ) -> serde_json::Value {
         // Count results from SARIF
         let runs = sarif.get("runs").and_then(|r| r.as_array());
 
         match metric {
             "security_findings" | "python_security_findings" | "vulnerability_count" => {
-                let count = runs.map(|runs| {
-                    runs.iter()
-                        .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
-                        .map(|results| results.len())
-                        .sum::<usize>()
-                }).unwrap_or(0);
+                let count = runs
+                    .map(|runs| {
+                        runs.iter()
+                            .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
+                            .map(|results| results.len())
+                            .sum::<usize>()
+                    })
+                    .unwrap_or(0);
                 serde_json::json!({ "count": count })
             }
             "critical_cves" => {
-                let count = runs.map(|runs| {
-                    runs.iter()
-                        .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
-                        .flat_map(|results| results.iter())
-                        .filter(|r| {
-                            r.get("level").and_then(|l| l.as_str()) == Some("error") ||
-                            r.get("properties")
-                                .and_then(|p| p.get("severity"))
-                                .and_then(|s| s.as_str())
-                                .map(|s| s.to_lowercase() == "critical")
-                                .unwrap_or(false)
-                        })
-                        .count()
-                }).unwrap_or(0);
+                let count = runs
+                    .map(|runs| {
+                        runs.iter()
+                            .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
+                            .flat_map(|results| results.iter())
+                            .filter(|r| {
+                                r.get("level").and_then(|l| l.as_str()) == Some("error")
+                                    || r.get("properties")
+                                        .and_then(|p| p.get("severity"))
+                                        .and_then(|s| s.as_str())
+                                        .map(|s| s.to_lowercase() == "critical")
+                                        .unwrap_or(false)
+                            })
+                            .count()
+                    })
+                    .unwrap_or(0);
                 serde_json::json!({ "count": count })
             }
             "hardcoded_secrets" => {
-                let count = runs.map(|runs| {
-                    runs.iter()
-                        .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
-                        .flat_map(|results| results.iter())
-                        .filter(|r| {
-                            r.get("ruleId").and_then(|id| id.as_str())
-                                .map(|id| id.contains("hardcoded") || id.contains("secret") || id.contains("password"))
-                                .unwrap_or(false)
-                        })
-                        .count()
-                }).unwrap_or(0);
+                let count = runs
+                    .map(|runs| {
+                        runs.iter()
+                            .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
+                            .flat_map(|results| results.iter())
+                            .filter(|r| {
+                                r.get("ruleId")
+                                    .and_then(|id| id.as_str())
+                                    .map(|id| {
+                                        id.contains("hardcoded")
+                                            || id.contains("secret")
+                                            || id.contains("password")
+                                    })
+                                    .unwrap_or(false)
+                            })
+                            .count()
+                    })
+                    .unwrap_or(0);
                 serde_json::json!({ "count": count })
             }
             "style_violations" | "python_code_quality" | "import_issues" => {
-                let count = runs.map(|runs| {
-                    runs.iter()
-                        .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
-                        .map(|results| results.len())
-                        .sum::<usize>()
-                }).unwrap_or(0);
+                let count = runs
+                    .map(|runs| {
+                        runs.iter()
+                            .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
+                            .map(|results| results.len())
+                            .sum::<usize>()
+                    })
+                    .unwrap_or(0);
                 serde_json::json!({ "count": count })
             }
             _ => {
                 // Return full result count as fallback
-                let count = runs.map(|runs| {
-                    runs.iter()
-                        .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
-                        .map(|results| results.len())
-                        .sum::<usize>()
-                }).unwrap_or(0);
+                let count = runs
+                    .map(|runs| {
+                        runs.iter()
+                            .filter_map(|run| run.get("results").and_then(|r| r.as_array()))
+                            .map(|results| results.len())
+                            .sum::<usize>()
+                    })
+                    .unwrap_or(0);
                 serde_json::json!({ "count": count })
             }
         }
     }
 
     /// Get acquisition status for a commit
-    pub fn get_acquisition_status(&self, commit: &str) -> Result<AcquisitionStatus, std::io::Error> {
+    pub fn get_acquisition_status(
+        &self,
+        commit: &str,
+    ) -> Result<AcquisitionStatus, std::io::Error> {
         let commit = self.resolve_commit(commit)?;
 
         let mut available_metrics = Vec::new();
@@ -298,7 +329,11 @@ impl DataAcquisition {
     }
 
     /// Get metric data with cascade
-    pub fn get_metric_data(&self, commit: &str, metric: &str) -> Result<MetricData, std::io::Error> {
+    pub fn get_metric_data(
+        &self,
+        commit: &str,
+        metric: &str,
+    ) -> Result<MetricData, std::io::Error> {
         let commit = self.resolve_commit(commit)?;
 
         // Find which tool provides this metric
@@ -353,7 +388,8 @@ impl DataAcquisition {
 
     /// List all available metrics
     pub fn list_available_metrics(&self) -> Vec<String> {
-        self.tool_mappings.iter()
+        self.tool_mappings
+            .iter()
             .flat_map(|m| m.metrics.clone())
             .collect()
     }

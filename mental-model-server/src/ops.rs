@@ -81,11 +81,7 @@ pub fn synthesize_by_category(findings: &[Finding]) -> Vec<RootCause> {
         // Collect affected areas
         let affected_areas: Vec<String> = findings
             .iter()
-            .filter_map(|f| {
-                f.context
-                    .as_ref()
-                    .and_then(|c| c.bounded_context.clone())
-            })
+            .filter_map(|f| f.context.as_ref().and_then(|c| c.bounded_context.clone()))
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect();
@@ -173,7 +169,7 @@ pub fn synthesize_by_location(findings: &[Finding]) -> Vec<RootCause> {
         });
     }
 
-    root_causes.sort_by(|a, b| b.finding_count.cmp(&a.finding_count));
+    root_causes.sort_by_key(|rc| std::cmp::Reverse(rc.finding_count));
     root_causes.truncate(5);
 
     root_causes

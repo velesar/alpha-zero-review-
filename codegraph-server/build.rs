@@ -1,33 +1,25 @@
 //! Build script for codegraph-server
 //!
-//! Compiles the SCIP protobuf definitions if protoc is available.
+//! Compiles the SCIP protobuf definitions. Uses the system `protoc` when
+//! `PROTOC` is set, otherwise falls back to a vendored binary so the crate
+//! builds on machines without protobuf tooling installed.
 
 fn main() {
-    // Check if proto file exists
     let proto_path = "proto/scip.proto";
-    if std::path::Path::new(proto_path).exists() {
-        // Configure prost to skip doc comments (they contain invalid Rust examples
-        // from the upstream SCIP proto that cause doctest failures)
-        let mut config = prost_build::Config::new();
-        config.disable_comments(["."]); // Disable all doc comments
+    println!("cargo:rerun-if-changed={}", proto_path);
+    println!("cargo:rerun-if-env-changed=PROTOC");
 
-        // Try to compile, but don't fail if protoc is missing
-        match config.compile_protos(&[proto_path], &["proto/"]) {
-            Ok(_) => {
-                println!("cargo:warning=SCIP proto compiled successfully");
-            }
-            Err(e) => {
-                // Check if the error is due to missing protoc
-                let err_str = e.to_string();
-                if err_str.contains("protoc") || err_str.contains("Could not find") {
-                    println!("cargo:warning=protoc not found, using simplified SCIP types. Install protoc for full SCIP support.");
-                } else {
-                    // Re-panic for other errors
-                    panic!("Failed to compile SCIP proto: {}", e);
-                }
-            }
-        }
-    } else {
-        println!("cargo:warning=SCIP proto not found at {}. Using simplified types.", proto_path);
+    if std::env::var_os("PROTOC").is_none() {
+        let protoc = protoc_bin_vendored::protoc_bin_path()
+            .expect("no vendored protoc for this platform; set PROTOC to a protoc binary");
+        std::env::set_var("PROTOC", protoc);
     }
+
+    // Upstream SCIP proto doc comments contain examples that are not valid
+    // Rust and would break doctests, so drop all generated comments.
+    let mut config = prost_build::Config::new();
+    config.disable_comments(["."]);
+    config
+        .compile_protos(&[proto_path], &["proto/"])
+        .expect("failed to compile SCIP proto");
 }

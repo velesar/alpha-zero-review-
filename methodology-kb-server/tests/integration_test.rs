@@ -4,9 +4,8 @@
 //! including metrics, thresholds, classifications, and compliance checking.
 
 use methodology_kb_server::types::{
-    CategoryDefinition, MetricDefinition, MetricDirection, MethodologyKB,
-    ProjectType, ThresholdValue, ThresholdSet, ArchitectureStandard,
-    StandardLayer, DependencyRule,
+    ArchitectureStandard, CategoryDefinition, DependencyRule, MethodologyKB, MetricDefinition,
+    MetricDirection, ProjectType, StandardLayer, ThresholdSet, ThresholdValue,
 };
 use std::collections::HashMap;
 
@@ -53,11 +52,14 @@ fn test_project_type_default() {
 #[test]
 fn test_threshold_set() {
     let mut metrics = HashMap::new();
-    metrics.insert("complexity".to_string(), ThresholdValue {
-        healthy: Some(5.0),
-        warning: Some(10.0),
-        critical: Some(20.0),
-    });
+    metrics.insert(
+        "complexity".to_string(),
+        ThresholdValue {
+            healthy: Some(5.0),
+            warning: Some(10.0),
+            critical: Some(20.0),
+        },
+    );
 
     let threshold_set = ThresholdSet {
         project_type: ProjectType::Greenfield,
@@ -114,14 +116,12 @@ fn test_architecture_standard() {
                 allowed_dependencies: vec!["application".to_string(), "domain".to_string()],
             },
         ],
-        dependency_rules: vec![
-            DependencyRule {
-                from: "domain".to_string(),
-                to: "adapter".to_string(),
-                allowed: false,
-                reason: Some("Domain should not depend on adapters".to_string()),
-            },
-        ],
+        dependency_rules: vec![DependencyRule {
+            from: "domain".to_string(),
+            to: "adapter".to_string(),
+            allowed: false,
+            reason: Some("Domain should not depend on adapters".to_string()),
+        }],
     };
 
     assert_eq!(standard.id, "hexagonal");
@@ -145,31 +145,40 @@ fn test_methodology_kb_with_data() {
     let mut kb = MethodologyKB::default();
 
     // Add a metric
-    kb.metrics.insert("loc".to_string(), MetricDefinition {
-        name: "Lines of Code".to_string(),
-        description: "Total lines of code".to_string(),
-        category: "size".to_string(),
-        unit: Some("lines".to_string()),
-        direction: MetricDirection::LowerIsBetter,
-        thresholds: HashMap::new(),
-    });
+    kb.metrics.insert(
+        "loc".to_string(),
+        MetricDefinition {
+            name: "Lines of Code".to_string(),
+            description: "Total lines of code".to_string(),
+            category: "size".to_string(),
+            unit: Some("lines".to_string()),
+            direction: MetricDirection::LowerIsBetter,
+            thresholds: HashMap::new(),
+        },
+    );
 
     // Add a category
-    kb.categories.insert("maintainability".to_string(), CategoryDefinition {
-        id: "maintainability".to_string(),
-        name: "Maintainability".to_string(),
-        description: "Code maintainability issues".to_string(),
-        parent: None,
-        weight: 1.0,
-    });
+    kb.categories.insert(
+        "maintainability".to_string(),
+        CategoryDefinition {
+            id: "maintainability".to_string(),
+            name: "Maintainability".to_string(),
+            description: "Code maintainability issues".to_string(),
+            parent: None,
+            weight: 1.0,
+        },
+    );
 
     // Add a threshold set
     let mut thresholds = HashMap::new();
-    thresholds.insert("loc".to_string(), ThresholdValue {
-        healthy: Some(500.0),
-        warning: Some(1000.0),
-        critical: Some(2000.0),
-    });
+    thresholds.insert(
+        "loc".to_string(),
+        ThresholdValue {
+            healthy: Some(500.0),
+            warning: Some(1000.0),
+            critical: Some(2000.0),
+        },
+    );
     kb.thresholds.push(ThresholdSet {
         project_type: ProjectType::Mature,
         language: None,
@@ -209,11 +218,14 @@ fn test_serialization_roundtrip() {
         direction: MetricDirection::HigherIsBetter,
         thresholds: {
             let mut t = HashMap::new();
-            t.insert("default".to_string(), ThresholdValue {
-                healthy: Some(80.0),
-                warning: Some(60.0),
-                critical: Some(40.0),
-            });
+            t.insert(
+                "default".to_string(),
+                ThresholdValue {
+                    healthy: Some(80.0),
+                    warning: Some(60.0),
+                    critical: Some(40.0),
+                },
+            );
             t
         },
     };
@@ -268,4 +280,19 @@ fn test_server_creation_and_info() {
     assert_eq!(info.server_info.version, "0.1.0");
     assert!(info.instructions.is_some());
     assert!(info.instructions.unwrap().contains("Methodology"));
+}
+
+#[test]
+fn test_shipped_kb_loads_without_errors() {
+    use methodology_kb_server::server::MethodologyKBServer;
+    let kb_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../methodology_kb");
+    let (kb, errors) = MethodologyKBServer::load_kb(&kb_path);
+    assert!(errors.is_empty(), "KB load errors: {:#?}", errors);
+    assert!(!kb.metrics.is_empty());
+    assert!(!kb.thresholds.is_empty());
+    assert!(!kb.categories.is_empty());
+    assert!(!kb.severity_adjustments.is_empty());
+    assert!(!kb.rule_mappings.is_empty());
+    assert!(kb.standards.len() >= 4);
+    assert!(!kb.templates.is_empty());
 }

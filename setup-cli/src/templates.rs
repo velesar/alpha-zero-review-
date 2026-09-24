@@ -10,18 +10,22 @@ pub fn mcp_json(agent_dir: &Path, target_dir: &Path) -> String {
             "mental-model": {
                 "command": agent_dir.join("target/release/mental-model-server").to_string_lossy(),
                 "args": [
-                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy()
+                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy(),
+                    "--audit-path", target_dir.join(".audit").to_string_lossy()
                 ]
             },
             "methodology-kb": {
                 "command": agent_dir.join("target/release/methodology-kb-server").to_string_lossy(),
                 "args": [
-                    "--kb-path", agent_dir.join("methodology_kb/").to_string_lossy()
+                    "--kb-path", agent_dir.join("methodology_kb/").to_string_lossy(),
+                    "--project-path", target_dir.to_string_lossy()
                 ]
             },
             "sarif-tools": {
                 "command": agent_dir.join("target/release/sarif-tools-server").to_string_lossy(),
-                "args": []
+                "args": [
+                    "--mappings-path", agent_dir.join("methodology_kb/taxonomies/rule_mapping.yaml").to_string_lossy()
+                ]
             },
             "codegraph": {
                 "command": agent_dir.join("target/release/codegraph-server").to_string_lossy(),
@@ -42,16 +46,27 @@ pub struct CodexMcpServer {
 }
 
 /// Generate MCP server configs for Codex CLI (to be merged into ~/.codex/config.toml)
-pub fn codex_mcp_servers(agent_dir: &Path, target_dir: &Path) -> std::collections::HashMap<String, CodexMcpServer> {
+pub fn codex_mcp_servers(
+    agent_dir: &Path,
+    target_dir: &Path,
+) -> std::collections::HashMap<String, CodexMcpServer> {
     let mut servers = std::collections::HashMap::new();
 
     servers.insert(
         "mental-model".to_string(),
         CodexMcpServer {
-            command: agent_dir.join("target/release/mental-model-server").to_string_lossy().to_string(),
+            command: agent_dir
+                .join("target/release/mental-model-server")
+                .to_string_lossy()
+                .to_string(),
             args: vec![
                 "--model-path".to_string(),
-                target_dir.join(".audit/mental_model.yaml").to_string_lossy().to_string(),
+                target_dir
+                    .join(".audit/mental_model.yaml")
+                    .to_string_lossy()
+                    .to_string(),
+                "--audit-path".to_string(),
+                target_dir.join(".audit").to_string_lossy().to_string(),
             ],
         },
     );
@@ -59,10 +74,18 @@ pub fn codex_mcp_servers(agent_dir: &Path, target_dir: &Path) -> std::collection
     servers.insert(
         "methodology-kb".to_string(),
         CodexMcpServer {
-            command: agent_dir.join("target/release/methodology-kb-server").to_string_lossy().to_string(),
+            command: agent_dir
+                .join("target/release/methodology-kb-server")
+                .to_string_lossy()
+                .to_string(),
             args: vec![
                 "--kb-path".to_string(),
-                agent_dir.join("methodology_kb/").to_string_lossy().to_string(),
+                agent_dir
+                    .join("methodology_kb/")
+                    .to_string_lossy()
+                    .to_string(),
+                "--project-path".to_string(),
+                target_dir.to_string_lossy().to_string(),
             ],
         },
     );
@@ -70,15 +93,27 @@ pub fn codex_mcp_servers(agent_dir: &Path, target_dir: &Path) -> std::collection
     servers.insert(
         "sarif-tools".to_string(),
         CodexMcpServer {
-            command: agent_dir.join("target/release/sarif-tools-server").to_string_lossy().to_string(),
-            args: vec![],
+            command: agent_dir
+                .join("target/release/sarif-tools-server")
+                .to_string_lossy()
+                .to_string(),
+            args: vec![
+                "--mappings-path".to_string(),
+                agent_dir
+                    .join("methodology_kb/taxonomies/rule_mapping.yaml")
+                    .to_string_lossy()
+                    .to_string(),
+            ],
         },
     );
 
     servers.insert(
         "codegraph".to_string(),
         CodexMcpServer {
-            command: agent_dir.join("target/release/codegraph-server").to_string_lossy().to_string(),
+            command: agent_dir
+                .join("target/release/codegraph-server")
+                .to_string_lossy()
+                .to_string(),
             args: vec![],
         },
     );
@@ -93,20 +128,24 @@ pub fn cline_mcp_settings(agent_dir: &Path, target_dir: &Path) -> String {
             "mental-model": {
                 "command": agent_dir.join("target/release/mental-model-server").to_string_lossy(),
                 "args": [
-                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy()
+                    "--model-path", target_dir.join(".audit/mental_model.yaml").to_string_lossy(),
+                    "--audit-path", target_dir.join(".audit").to_string_lossy()
                 ],
                 "disabled": false
             },
             "methodology-kb": {
                 "command": agent_dir.join("target/release/methodology-kb-server").to_string_lossy(),
                 "args": [
-                    "--kb-path", agent_dir.join("methodology_kb/").to_string_lossy()
+                    "--kb-path", agent_dir.join("methodology_kb/").to_string_lossy(),
+                    "--project-path", target_dir.to_string_lossy()
                 ],
                 "disabled": false
             },
             "sarif-tools": {
                 "command": agent_dir.join("target/release/sarif-tools-server").to_string_lossy(),
-                "args": [],
+                "args": [
+                    "--mappings-path", agent_dir.join("methodology_kb/taxonomies/rule_mapping.yaml").to_string_lossy()
+                ],
                 "disabled": false
             },
             "codegraph": {

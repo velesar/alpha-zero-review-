@@ -3,7 +3,10 @@
 //! Runs Trivy vulnerability scanner with SARIF output.
 
 use crate::domain::{ConfigValue, ToolConfig};
-use crate::runner::{detect_tool, get_tool_version, parse_sarif_bytes, InstallCommand, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{
+    detect_tool, get_tool_version, parse_sarif_bytes, InstallCommand, RunnerError, ToolResult,
+    ToolRunner,
+};
 use crate::sarif::Sarif;
 use std::path::Path;
 use std::process::Command;
@@ -26,10 +29,23 @@ impl ToolRunner for TrivyRunner {
 
     fn supported_languages(&self) -> Vec<String> {
         vec![
-            "python", "javascript", "typescript", "java", "go",
-            "ruby", "rust", "php", "dotnet",
-            "dockerfile", "terraform", "kubernetes", "helm",
-        ].into_iter().map(String::from).collect()
+            "python",
+            "javascript",
+            "typescript",
+            "java",
+            "go",
+            "ruby",
+            "rust",
+            "php",
+            "dotnet",
+            "dockerfile",
+            "terraform",
+            "kubernetes",
+            "helm",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect()
     }
 
     fn install_commands(&self) -> Vec<InstallCommand> {
@@ -51,10 +67,7 @@ impl ToolRunner for TrivyRunner {
         }
 
         let mut cmd = Command::new("trivy");
-        cmd.arg("fs")
-           .arg("--format")
-           .arg("sarif")
-           .arg(path);
+        cmd.arg("fs").arg("--format").arg("sarif").arg(path);
 
         // Apply configuration
         if let Some(cfg) = config {

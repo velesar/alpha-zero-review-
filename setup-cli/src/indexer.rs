@@ -73,7 +73,8 @@ impl IndexerConfig {
                 build_command: "scip-go",
                 build_args: &[],
                 output_file: "index.scip",
-                install_instructions: "go install github.com/sourcegraph/scip-go/cmd/scip-go@latest",
+                install_instructions:
+                    "go install github.com/sourcegraph/scip-go/cmd/scip-go@latest",
                 install_command: Some(&[
                     "go",
                     "install",
@@ -109,8 +110,8 @@ fn run_command_with_timeout(
     cwd: Option<&Path>,
     timeout_secs: u64,
 ) -> Result<std::process::Output> {
-    use std::process::Stdio;
     use std::io::Read;
+    use std::process::Stdio;
 
     let mut command = Command::new(cmd);
     command.args(args);
@@ -121,7 +122,8 @@ fn run_command_with_timeout(
         command.current_dir(dir);
     }
 
-    let mut child = command.spawn()
+    let mut child = command
+        .spawn()
         .context(format!("Failed to spawn command: {}", cmd))?;
 
     // Wait with timeout using a simple polling approach
@@ -152,11 +154,7 @@ fn run_command_with_timeout(
                 // Still running, check timeout
                 if start.elapsed() > timeout {
                     let _ = child.kill();
-                    bail!(
-                        "Command '{}' timed out after {} seconds",
-                        cmd,
-                        timeout_secs
-                    );
+                    bail!("Command '{}' timed out after {} seconds", cmd, timeout_secs);
                 }
                 // Sleep briefly before checking again
                 std::thread::sleep(Duration::from_millis(100));
@@ -174,21 +172,17 @@ pub fn check_indexer(lang: Language) -> IndexerStatus {
     let config = IndexerConfig::for_language(lang);
 
     // Use short timeout for availability check (10 seconds)
-    let (installed, version) = match run_command_with_timeout(
-        config.check_command,
-        config.check_args,
-        None,
-        10,
-    ) {
-        Ok(output) if output.status.success() => {
-            let version = String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .next()
-                .map(|s| s.trim().to_string());
-            (true, version)
-        }
-        _ => (false, None),
-    };
+    let (installed, version) =
+        match run_command_with_timeout(config.check_command, config.check_args, None, 10) {
+            Ok(output) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .next()
+                    .map(|s| s.trim().to_string());
+                (true, version)
+            }
+            _ => (false, None),
+        };
 
     IndexerStatus {
         language: lang,
@@ -207,14 +201,16 @@ pub fn check_indexers(languages: &[Language]) -> Vec<IndexerStatus> {
 pub fn install_indexer(lang: Language) -> Result<()> {
     let config = IndexerConfig::for_language(lang);
 
-    let install_cmd = config
-        .install_command
-        .context(format!("No automatic install for {}. Manual install: {}", lang, config.install_instructions))?;
+    let install_cmd = config.install_command.context(format!(
+        "No automatic install for {}. Manual install: {}",
+        lang, config.install_instructions
+    ))?;
 
     println!("  Installing {} indexer...", lang);
     println!("    Running: {}", install_cmd.join(" "));
 
-    let (cmd, args) = install_cmd.split_first()
+    let (cmd, args) = install_cmd
+        .split_first()
         .ok_or_else(|| anyhow::anyhow!("Empty install command for {}", lang))?;
 
     let output = run_command_with_timeout(cmd, args, None, COMMAND_TIMEOUT_SECS)
@@ -304,9 +300,7 @@ pub fn get_current_commit(project_path: &Path) -> Result<String> {
         bail!("Not a git repository or git not available");
     }
 
-    let commit = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_string();
+    let commit = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     Ok(commit[..12.min(commit.len())].to_string()) // Short hash
 }

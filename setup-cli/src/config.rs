@@ -8,30 +8,159 @@ use std::fs;
 use std::path::Path;
 use toml::Value;
 
-/// Clean existing audit configurations
+/// MCP server names registered by the audit agent
+const SERVER_NAMES: [&str; 4] = ["mental-model", "methodology-kb", "sarif-tools", "codegraph"];
+
+const BLOCK_BEGIN: &str = "<!-- ai-code-audit:begin -->";
+const BLOCK_END: &str = "<!-- ai-code-audit:end -->";
+
+/// Insert or replace the audit agent's section in an instructions file
+/// (CLAUDE.md, AGENTS.md, .clinerules), preserving the project's own content.
+pub fn upsert_marked_block(path: &Path, content: &str) -> Result<()> {
+    let block = format!("{}\n{}\n{}\n", BLOCK_BEGIN, content.trim_end(), BLOCK_END);
+    let existing = if path.exists() {
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?
+    } else {
+        String::new()
+    };
+
+    let updated = match (existing.find(BLOCK_BEGIN), existing.find(BLOCK_END)) {
+        (Some(start), Some(end)) if end > start => {
+            let end = end + BLOCK_END.len();
+            let rest = existing[end..]
+                .strip_prefix('\n')
+                .unwrap_or(&existing[end..]);
+            format!("{}{}{}", &existing[..start], block, rest)
+        }
+        _ if existing.trim().is_empty() => block,
+        _ => format!("{}\n\n{}", existing.trim_end(), block),
+    };
+
+    fs::write(path, updated).with_context(|| format!("Failed to write {}", path.display()))
+}
+
+/// Remove the audit agent's section; deletes the file if nothing else remains.
+pub fn remove_marked_block(path: &Path) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let existing = fs::read_to_string(path)?;
+    let (Some(start), Some(end)) = (existing.find(BLOCK_BEGIN), existing.find(BLOCK_END)) else {
+        return Ok(false);
+    };
+    if end < start {
+        return Ok(false);
+    }
+    let remaining = format!(
+        "{}{}",
+        existing[..start].trim_end(),
+        &existing[end + BLOCK_END.len()..]
+    );
+    if remaining.trim().is_empty() {
+        fs::remove_file(path)?;
+    } else {
+        fs::write(path, format!("{}\n", remaining.trim_end()))?;
+    }
+    Ok(true)
+}
+
+/// Merge the audit agent's servers into an MCP JSON config
+/// (`{"mcpServers": {...}}`), keeping any other servers already configured.
+pub fn merge_mcp_servers(path: &Path, generated: &str) -> Result<()> {
+    let generated: serde_json::Value = serde_json::from_str(generated)?;
+    let mut config: serde_json::Value = if path.exists() {
+        let content = fs::read_to_string(path)?;
+        serde_json::from_str(&content).with_context(|| {
+            format!(
+                "{} is not valid JSON; fix or remove it and re-run",
+                path.display()
+            )
+        })?
+    } else {
+        serde_json::json!({})
+    };
+
+    let root = config
+        .as_object_mut()
+        .with_context(|| format!("{} must contain a JSON object", path.display()))?;
+    let servers = root
+        .entry("mcpServers")
+        .or_insert_with(|| serde_json::json!({}));
+    let servers = servers
+        .as_object_mut()
+        .with_context(|| format!("mcpServers in {} must be an object", path.display()))?;
+
+    if let Some(ours) = generated.get("mcpServers").and_then(|v| v.as_object()) {
+        for (name, server) in ours {
+            servers.insert(name.clone(), server.clone());
+        }
+    }
+
+    fs::write(path, serde_json::to_string_pretty(&config)?)?;
+    Ok(())
+}
+
+/// Remove the audit agent's servers from an MCP JSON config; deletes the
+/// file if no servers or other settings remain.
+pub fn remove_mcp_servers(path: &Path) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let content = fs::read_to_string(path)?;
+    let Ok(mut config) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return Ok(false);
+    };
+    let Some(servers) = config.get_mut("mcpServers").and_then(|v| v.as_object_mut()) else {
+        return Ok(false);
+    };
+    let removed = SERVER_NAMES
+        .iter()
+        .filter(|name| servers.remove(**name).is_some())
+        .count();
+    if removed == 0 {
+        return Ok(false);
+    }
+
+    let only_empty_servers = servers.is_empty()
+        && config
+            .as_object()
+            .is_some_and(|o| o.keys().all(|k| k == "mcpServers"));
+    if only_empty_servers {
+        fs::remove_file(path)?;
+    } else {
+        fs::write(path, serde_json::to_string_pretty(&config)?)?;
+    }
+    Ok(true)
+}
+
+/// Clean existing audit configurations.
+///
+/// Only removes what the audit agent created: the .audit directory, the
+/// viewpoints reference, its MCP servers and its marked instruction blocks.
 pub fn clean(target_dir: &Path) -> Result<()> {
     println!("Cleaning existing audit configurations...");
 
-    let items = [
-        (".audit", true),
-        (".cline", true),
-        (".mcp.json", false),
-        ("codex.json", false),
-        ("CLAUDE.md", false),
-        ("AGENTS.md", false),
-        (".clinerules", false),
-        (".audit-viewpoints.md", false),
-    ];
+    let audit_dir = target_dir.join(".audit");
+    if audit_dir.exists() {
+        fs::remove_dir_all(&audit_dir)?;
+        println!("  ✓ Removed .audit/");
+    }
 
-    for (name, is_dir) in items {
-        let path = target_dir.join(name);
-        if path.exists() {
-            if is_dir {
-                fs::remove_dir_all(&path)?;
-            } else {
-                fs::remove_file(&path)?;
-            }
-            println!("  ✓ Removed {}", name);
+    let viewpoints = target_dir.join(".audit-viewpoints.md");
+    if viewpoints.exists() {
+        fs::remove_file(&viewpoints)?;
+        println!("  ✓ Removed .audit-viewpoints.md");
+    }
+
+    for name in [".mcp.json", ".cline/mcp_settings.json"] {
+        if remove_mcp_servers(&target_dir.join(name))? {
+            println!("  ✓ Removed audit MCP servers from {}", name);
+        }
+    }
+
+    for name in ["CLAUDE.md", "AGENTS.md", ".clinerules"] {
+        if remove_marked_block(&target_dir.join(name))? {
+            println!("  ✓ Removed audit section from {}", name);
         }
     }
 
@@ -43,8 +172,7 @@ pub fn setup_audit_dir(target_dir: &Path) -> Result<()> {
     println!("Setting up audit directory...");
 
     let audit_dir = target_dir.join(".audit/artifacts");
-    fs::create_dir_all(&audit_dir)
-        .context("Failed to create .audit/artifacts directory")?;
+    fs::create_dir_all(&audit_dir).context("Failed to create .audit/artifacts directory")?;
 
     println!("  ✓ Created .audit/");
     Ok(())
@@ -65,26 +193,12 @@ fn configure_claude(agent_dir: &Path, target_dir: &Path) -> Result<()> {
 
     // Generate MCP config
     let mcp_config = templates::mcp_json(agent_dir, target_dir);
-    let mcp_path = target_dir.join(".mcp.json");
-    fs::write(&mcp_path, mcp_config)
-        .context("Failed to write .mcp.json")?;
-    println!("  ✓ Created .mcp.json");
+    merge_mcp_servers(&target_dir.join(".mcp.json"), &mcp_config)
+        .context("Failed to update .mcp.json")?;
+    println!("  ✓ Added audit MCP servers to .mcp.json");
 
-    // Copy CLAUDE.md from agent directory
-    let claude_md_src = agent_dir.join("CLAUDE.md");
-    let claude_md_dst = target_dir.join("CLAUDE.md");
-
-    if claude_md_src.exists() {
-        fs::copy(&claude_md_src, &claude_md_dst)
-            .context("Failed to copy CLAUDE.md")?;
-        println!("  ✓ Copied CLAUDE.md");
-    } else {
-        // Generate default CLAUDE.md
-        let content = templates::claude_md();
-        fs::write(&claude_md_dst, content)
-            .context("Failed to write CLAUDE.md")?;
-        println!("  ✓ Created CLAUDE.md");
-    }
+    upsert_marked_block(&target_dir.join("CLAUDE.md"), templates::claude_md())?;
+    println!("  ✓ Added audit section to CLAUDE.md");
 
     Ok(())
 }
@@ -179,18 +293,14 @@ fn configure_codex(agent_dir: &Path, target_dir: &Path) -> Result<()> {
     }
 
     // Write merged config back
-    let config_str = toml::to_string_pretty(&config)
-        .context("Failed to serialize config to TOML")?;
-    fs::write(&config_path, config_str)
-        .context("Failed to write ~/.codex/config.toml")?;
+    let config_str =
+        toml::to_string_pretty(&config).context("Failed to serialize config to TOML")?;
+    fs::write(&config_path, config_str).context("Failed to write ~/.codex/config.toml")?;
     println!("  ✓ Updated ~/.codex/config.toml (merged 4 MCP servers)");
 
     // Create AGENTS.md in target directory
-    let agents_md = templates::agents_md();
-    let agents_path = target_dir.join("AGENTS.md");
-    fs::write(&agents_path, agents_md)
-        .context("Failed to write AGENTS.md")?;
-    println!("  ✓ Created AGENTS.md");
+    upsert_marked_block(&target_dir.join("AGENTS.md"), templates::agents_md())?;
+    println!("  ✓ Added audit section to AGENTS.md");
 
     Ok(())
 }
@@ -201,22 +311,16 @@ fn configure_cline(agent_dir: &Path, target_dir: &Path) -> Result<()> {
 
     // Create .cline directory
     let cline_dir = target_dir.join(".cline");
-    fs::create_dir_all(&cline_dir)
-        .context("Failed to create .cline directory")?;
+    fs::create_dir_all(&cline_dir).context("Failed to create .cline directory")?;
 
     // Generate MCP settings
     let mcp_settings = templates::cline_mcp_settings(agent_dir, target_dir);
-    let settings_path = cline_dir.join("mcp_settings.json");
-    fs::write(&settings_path, mcp_settings)
-        .context("Failed to write mcp_settings.json")?;
-    println!("  ✓ Created .cline/mcp_settings.json");
+    merge_mcp_servers(&cline_dir.join("mcp_settings.json"), &mcp_settings)
+        .context("Failed to update .cline/mcp_settings.json")?;
+    println!("  ✓ Added audit MCP servers to .cline/mcp_settings.json");
 
-    // Create .clinerules
-    let clinerules = templates::clinerules();
-    let rules_path = target_dir.join(".clinerules");
-    fs::write(&rules_path, clinerules)
-        .context("Failed to write .clinerules")?;
-    println!("  ✓ Created .clinerules");
+    upsert_marked_block(&target_dir.join(".clinerules"), templates::clinerules())?;
+    println!("  ✓ Added audit section to .clinerules");
 
     Ok(())
 }
@@ -228,8 +332,7 @@ pub fn create_viewpoints_reference(agent_dir: &Path, target_dir: &Path) -> Resul
 
     let content = templates::viewpoints_reference(agent_dir);
     let path = target_dir.join(".audit-viewpoints.md");
-    fs::write(&path, content)
-        .context("Failed to write .audit-viewpoints.md")?;
+    fs::write(&path, content).context("Failed to write .audit-viewpoints.md")?;
     println!("  ✓ Created .audit-viewpoints.md");
 
     Ok(())
@@ -250,4 +353,85 @@ pub fn update_gitignore(target_dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn marked_block_preserves_existing_content_and_is_idempotent() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("CLAUDE.md");
+        fs::write(&path, "# My project\n\nOwn rules.\n").unwrap();
+
+        upsert_marked_block(&path, "audit v1").unwrap();
+        upsert_marked_block(&path, "audit v2").unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("# My project\n\nOwn rules.\n"));
+        assert!(content.contains("audit v2"));
+        assert!(!content.contains("audit v1"));
+        assert_eq!(content.matches(BLOCK_BEGIN).count(), 1);
+
+        assert!(remove_marked_block(&path).unwrap());
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "# My project\n\nOwn rules.\n"
+        );
+    }
+
+    #[test]
+    fn removing_only_block_deletes_file() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("AGENTS.md");
+        upsert_marked_block(&path, "audit").unwrap();
+        assert!(remove_marked_block(&path).unwrap());
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn mcp_servers_merge_and_remove_keep_other_servers() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(".mcp.json");
+        fs::write(
+            &path,
+            r#"{"mcpServers": {"github": {"command": "gh-mcp"}}}"#,
+        )
+        .unwrap();
+
+        let generated = templates::mcp_json(Path::new("/agent"), dir.path());
+        merge_mcp_servers(&path, &generated).unwrap();
+
+        let config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let servers = config["mcpServers"].as_object().unwrap();
+        assert!(servers.contains_key("github"));
+        for name in SERVER_NAMES {
+            assert!(servers.contains_key(name), "missing {}", name);
+        }
+
+        assert!(remove_mcp_servers(&path).unwrap());
+        let config: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            config["mcpServers"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>(),
+            vec!["github"]
+        );
+    }
+
+    #[test]
+    fn invalid_existing_mcp_json_is_not_overwritten() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join(".mcp.json");
+        fs::write(&path, "{ not json").unwrap();
+        let generated = templates::mcp_json(Path::new("/agent"), dir.path());
+        assert!(merge_mcp_servers(&path, &generated).is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{ not json");
+    }
 }

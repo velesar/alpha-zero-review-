@@ -3,7 +3,9 @@
 //! Runs Semgrep static analysis with SARIF output.
 
 use crate::domain::ToolConfig;
-use crate::runner::{detect_tool, get_tool_version, parse_sarif, InstallCommand, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{
+    detect_tool, get_tool_version, parse_sarif, InstallCommand, RunnerError, ToolResult, ToolRunner,
+};
 use crate::sarif::Sarif;
 use std::path::Path;
 use std::process::Command;
@@ -27,10 +29,27 @@ impl ToolRunner for SemgrepRunner {
 
     fn supported_languages(&self) -> Vec<String> {
         vec![
-            "python", "javascript", "typescript", "java", "go",
-            "ruby", "rust", "c", "cpp", "csharp", "kotlin",
-            "scala", "php", "swift", "lua", "ocaml", "r",
-        ].into_iter().map(String::from).collect()
+            "python",
+            "javascript",
+            "typescript",
+            "java",
+            "go",
+            "ruby",
+            "rust",
+            "c",
+            "cpp",
+            "csharp",
+            "kotlin",
+            "scala",
+            "php",
+            "swift",
+            "lua",
+            "ocaml",
+            "r",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect()
     }
 
     fn install_commands(&self) -> Vec<InstallCommand> {
@@ -51,10 +70,10 @@ impl ToolRunner for SemgrepRunner {
 
         let mut cmd = Command::new("semgrep");
         cmd.arg("scan")
-           .arg("--sarif")
-           .arg("-o")
-           .arg(output_file.path())
-           .arg(path);
+            .arg("--sarif")
+            .arg("-o")
+            .arg(output_file.path())
+            .arg(path);
 
         // Apply custom config if provided
         if let Some(cfg) = config {

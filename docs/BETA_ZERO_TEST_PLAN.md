@@ -4,8 +4,22 @@
 
 **Version:** 1.0
 **Date:** January 2026
-**Status:** Planning
+**Status:** Implemented, with deviations (see below)
 **Author:** Light IT Global
+
+---
+
+## Implementation Status (September 2026)
+
+The plan below is kept as written. Where the implementation differs:
+
+| Planned | Actual |
+|---------|--------|
+| methodology-kb `acquire_findings`, `check_manifest`, `parse_ci_config` | **Not implemented.** Acquisition is covered by `get_metric_data`, `get_acquisition_status` and `list_acquirable_metrics` (read cached artifacts; report which tool to run). There is no `.audit/manifest.yaml` support and no CI-config parsing. |
+| sarif-tools runners incl. eslint | semgrep, bandit, ruff, trivy, clippy (no eslint runner). |
+| KB files per metric / per project type | Single files: `glossary/metrics.yaml`, `thresholds/by_project_type.yaml` (includes `python_backend`, `typescript_frontend`, ... profiles), `taxonomies/rule_mapping.yaml`. |
+| codegraph `find_hotspot_symbols(min_refs)` | Parameter is `min_callers`. |
+| SCIP index management | Implemented as ADR-0008 (`load_project_indexes`, `setup-audit --with-index`). |
 
 ---
 
@@ -822,8 +836,8 @@ codegraph-server ────┴────────────────
 
 ## Appendix A: Related Documents
 
-- [Infrastructure Implementation Vision](./infrastructure_implementation_vision.md)
-- [ADR-001: Tool Orchestration via mcp-cli](./adr-001-tool-orchestration-mcp-cli.md)
+- Infrastructure Implementation Vision (external; not in this repository)
+- ADR-001: Tool Orchestration via mcp-cli (external; not in this repository)
 - [Viewpoints Framework](./VIEWPOINTS_FRAMEWORK.md)
 - [Alpha-Zero Repository](https://github.com/velesar/alpha-zero-review-)
 

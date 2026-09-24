@@ -86,7 +86,7 @@ pub fn find_hotspots(
     }
 
     // Sort by caller count descending
-    hotspots.sort_by(|a, b| b.caller_count.cmp(&a.caller_count));
+    hotspots.sort_by_key(|h| std::cmp::Reverse(h.caller_count));
     hotspots
 }
 
@@ -140,18 +140,12 @@ mod tests {
 
     #[test]
     fn test_detect_index_format_scip() {
-        assert_eq!(
-            detect_index_format(Path::new("index.scip")),
-            Some("scip")
-        );
+        assert_eq!(detect_index_format(Path::new("index.scip")), Some("scip"));
     }
 
     #[test]
     fn test_detect_index_format_json() {
-        assert_eq!(
-            detect_index_format(Path::new("graph.json")),
-            Some("json")
-        );
+        assert_eq!(detect_index_format(Path::new("graph.json")), Some("json"));
     }
 
     #[test]

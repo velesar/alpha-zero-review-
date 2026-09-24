@@ -121,7 +121,9 @@ impl RuleMappings {
     /// Get mapping for a rule (tries tool:rule_id first, then just rule_id)
     pub fn get(&self, tool: &str, rule_id: &str) -> Option<&RuleMapping> {
         let key = format!("{}:{}", tool.to_lowercase(), rule_id);
-        self.mappings.get(&key).or_else(|| self.mappings.get(rule_id))
+        self.mappings
+            .get(&key)
+            .or_else(|| self.mappings.get(rule_id))
     }
 
     /// Get by exact key
@@ -206,8 +208,11 @@ mod tests {
     #[test]
     fn test_rule_mappings_lookup() {
         let mut mappings = RuleMappings::new();
-        mappings.insert("semgrep", "python.lang.security.audit.eval-injection",
-            RuleMapping::new().with_category("security"));
+        mappings.insert(
+            "semgrep",
+            "python.lang.security.audit.eval-injection",
+            RuleMapping::new().with_category("security"),
+        );
 
         // Lookup by tool:rule
         let found = mappings.get("semgrep", "python.lang.security.audit.eval-injection");

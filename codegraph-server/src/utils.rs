@@ -5,8 +5,9 @@ use serde::Serialize;
 
 /// Format a serializable value as a pretty-printed JSON response
 pub fn format_json_response<T: Serialize>(data: &T) -> Result<CallToolResult, rmcp::ErrorData> {
-    let json = serde_json::to_string_pretty(data)
-        .map_err(|e| rmcp::ErrorData::internal_error(format!("JSON serialization error: {}", e), None))?;
+    let json = serde_json::to_string_pretty(data).map_err(|e| {
+        rmcp::ErrorData::internal_error(format!("JSON serialization error: {}", e), None)
+    })?;
     Ok(CallToolResult::success(vec![Content::text(json)]))
 }
 
@@ -20,8 +21,9 @@ pub fn format_prefixed_json_response<T: Serialize>(
     prefix: &str,
     data: &T,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    let json = serde_json::to_string_pretty(data)
-        .map_err(|e| rmcp::ErrorData::internal_error(format!("JSON serialization error: {}", e), None))?;
+    let json = serde_json::to_string_pretty(data).map_err(|e| {
+        rmcp::ErrorData::internal_error(format!("JSON serialization error: {}", e), None)
+    })?;
     Ok(CallToolResult::success(vec![Content::text(format!(
         "{}\n\n{}",
         prefix, json
