@@ -23,6 +23,10 @@ struct Args {
     #[arg(long)]
     mappings_path: Option<PathBuf>,
 
+    /// Directory that tool paths may point into (repeatable; default: current directory)
+    #[arg(long = "allowed-root")]
+    allowed_roots: Vec<PathBuf>,
+
     /// Enable debug logging
     #[arg(long, short)]
     debug: bool,
@@ -52,7 +56,13 @@ async fn main() -> Result<()> {
             tracing::warn!("No rule mappings found; normalize_sarif will not categorize results")
         }
     }
-    let server = server::SarifToolsServer::new(mappings_path);
+    let allowed_roots = if args.allowed_roots.is_empty() {
+        sarif_tools_server::utils::default_allowed_roots()
+    } else {
+        args.allowed_roots
+    };
+    tracing::info!("Allowed roots: {:?}", allowed_roots);
+    let server = server::SarifToolsServer::with_allowed_roots(mappings_path, allowed_roots);
 
     // Run with stdio transport
     let service = server.serve(rmcp::transport::stdio()).await?;
