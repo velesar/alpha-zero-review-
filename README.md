@@ -291,8 +291,14 @@ RECKLESS │ "No time for       │ "What's layering?" │
 
 ## CI/CD
 
+- **ci.yml**: `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `cargo audit`
+- **coverage.yml**: cargo-llvm-cov; fails below 65% total line coverage or 60% for any
+  MCP handler file (`*/src/server.rs`), see `scripts/check-coverage.py`
 - **audit-artifacts.yml**: Generates SARIF artifacts (semgrep, bandit, ruff, trivy, clippy)
-- **coverage.yml**: Code coverage with cargo-tarpaulin and Codecov
+
+Every MCP tool has tests in `<server>/tests/mcp_tools.rs` that call it through a
+real rmcp client over an in-memory transport (`mcp-test-support`), with valid
+and invalid input.
 
 ## License
 
