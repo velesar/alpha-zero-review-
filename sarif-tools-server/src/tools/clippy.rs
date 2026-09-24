@@ -17,12 +17,50 @@ use std::process::Command;
 /// Clippy runner
 pub struct ClippyRunner;
 
+/// Lints the caller asked to treat as errors (`deny`, `deny_warnings`)
+#[derive(Debug, Default)]
+struct DenyPolicy {
+    all_warnings: bool,
+    lints: Vec<String>,
+}
+
+impl DenyPolicy {
+    fn from_config(config: Option<&ToolConfig>) -> Self {
+        let mut policy = Self::default();
+        if let Some(cfg) = config {
+            policy.all_warnings = matches!(
+                cfg.options.get("deny_warnings"),
+                Some(ConfigValue::Bool(true))
+            );
+            if let Some(ConfigValue::Array(lints)) = cfg.options.get("deny") {
+                policy.lints = lints.clone();
+            }
+        }
+        policy
+    }
+
+    fn escalates(&self, rule_id: &str) -> bool {
+        let normalize = |s: &str| s.replace('-', "_");
+        self.all_warnings
+            || self
+                .lints
+                .iter()
+                .any(|l| normalize(l) == normalize(rule_id))
+    }
+}
+
 /// Build `cargo` arguments for a clippy run.
 ///
-/// Cargo options come first; rustc lint flags (`-D ...`) all go after a
-/// single `--` separator.
+/// Denied lints are passed as warnings (`-W`) and escalated to SARIF errors
+/// when parsing: with `-D`, rustc aborts the crate and cargo skips everything
+/// depending on it, so most of the target would go unchecked. `--keep-going`
+/// keeps building other units after a genuine compile error.
 fn clippy_args(config: Option<&ToolConfig>) -> Vec<String> {
-    let mut args = vec!["clippy".to_string(), "--message-format=json".to_string()];
+    let mut args = vec![
+        "clippy".to_string(),
+        "--message-format=json".to_string(),
+        "--keep-going".to_string(),
+    ];
     let mut lint_args = Vec::new();
 
     if let Some(cfg) = config {
@@ -36,13 +74,9 @@ fn clippy_args(config: Option<&ToolConfig>) -> Vec<String> {
             args.push("--features".to_string());
             args.push(features.clone());
         }
-        if let Some(ConfigValue::Bool(true)) = cfg.options.get("deny_warnings") {
-            lint_args.push("-D".to_string());
-            lint_args.push("warnings".to_string());
-        }
         if let Some(ConfigValue::Array(deny_lints)) = cfg.options.get("deny") {
             for lint_name in deny_lints {
-                lint_args.push("-D".to_string());
+                lint_args.push("-W".to_string());
                 lint_args.push(lint_name.clone());
             }
         }
@@ -53,6 +87,23 @@ fn clippy_args(config: Option<&ToolConfig>) -> Vec<String> {
         args.extend(lint_args);
     }
     args
+}
+
+/// Compilation units cargo reported as failed ("could not compile `x` (lib)")
+fn failed_units(stderr: &str) -> Vec<String> {
+    stderr
+        .lines()
+        .filter_map(|line| line.split_once("could not compile `"))
+        .map(|(_, rest)| {
+            let (name, tail) = rest.split_once('`').unwrap_or((rest, ""));
+            let target = tail
+                .split_once('(')
+                .and_then(|(_, t)| t.split_once(')'))
+                .map(|(t, _)| format!(" ({})", t))
+                .unwrap_or_default();
+            format!("{}{}", name, target)
+        })
+        .collect()
 }
 
 /// Clippy diagnostic from JSON output
@@ -137,7 +188,8 @@ impl ToolRunner for ClippyRunner {
         let exit_code = output.status.code().unwrap_or(-1);
 
         // Parse JSON output and convert to SARIF
-        let sarif = self.parse_clippy_output(&output.stdout, path)?;
+        let policy = DenyPolicy::from_config(config);
+        let sarif = self.parse_clippy_output(&output.stdout, path, &policy)?;
 
         let stderr = if output.stderr.is_empty() {
             None
@@ -145,17 +197,33 @@ impl ToolRunner for ClippyRunner {
             Some(String::from_utf8_lossy(&output.stderr).to_string())
         };
 
+        let failed = failed_units(stderr.as_deref().unwrap_or(""));
+        let incomplete = (!failed.is_empty()).then(|| {
+            format!(
+                "{} compilation unit(s) failed to build, so they and units depending on them \
+                 were not fully checked: {}",
+                failed.len(),
+                failed.join(", ")
+            )
+        });
+
         Ok(ToolResult {
             sarif,
             exit_code,
             stderr,
+            incomplete,
         })
     }
 }
 
 impl ClippyRunner {
     /// Parse clippy JSON output and convert to SARIF
-    fn parse_clippy_output(&self, output: &[u8], base_path: &Path) -> Result<Sarif, RunnerError> {
+    fn parse_clippy_output(
+        &self,
+        output: &[u8],
+        base_path: &Path,
+        policy: &DenyPolicy,
+    ) -> Result<Sarif, RunnerError> {
         let mut results: Vec<SarifResult> = Vec::new();
 
         // Clippy outputs one JSON object per line
@@ -168,7 +236,10 @@ impl ClippyRunner {
             if let Ok(diagnostic) = serde_json::from_slice::<ClippyDiagnostic>(line) {
                 // Only include warnings and errors from clippy (skip notes, help, etc.)
                 if diagnostic.message.level == "warning" || diagnostic.message.level == "error" {
-                    if let Some(result) = self.diagnostic_to_sarif(&diagnostic, base_path) {
+                    if let Some(mut result) = self.diagnostic_to_sarif(&diagnostic, base_path) {
+                        if policy.escalates(&result.rule_id) {
+                            result.level = Some("error".to_string());
+                        }
                         results.push(result);
                     }
                 }
@@ -272,7 +343,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_clippy_args_use_single_separator() {
+    fn test_clippy_args_warn_instead_of_deny() {
         let mut cfg = ToolConfig::default();
         cfg.options
             .insert("all_targets".to_string(), ConfigValue::Bool(true));
@@ -289,15 +360,48 @@ mod tests {
             vec![
                 "clippy",
                 "--message-format=json",
+                "--keep-going",
                 "--all-targets",
                 "--",
-                "-D",
-                "warnings",
-                "-D",
+                "-W",
                 "clippy::unwrap_used"
             ]
         );
-        assert_eq!(clippy_args(None), vec!["clippy", "--message-format=json"]);
+        assert_eq!(
+            clippy_args(None),
+            vec!["clippy", "--message-format=json", "--keep-going"]
+        );
+    }
+
+    #[test]
+    fn test_denied_lints_are_escalated_to_errors() {
+        let line = br#"{"reason":"compiler-message","message":{"message":"used unwrap","code":{"code":"clippy::unwrap_used"},"level":"warning","spans":[{"file_name":"src/lib.rs","line_start":3,"line_end":3,"column_start":1,"column_end":9,"is_primary":true}],"rendered":null}}"#;
+        let runner = ClippyRunner;
+        let policy = DenyPolicy {
+            all_warnings: false,
+            lints: vec!["clippy::unwrap-used".to_string()],
+        };
+        let sarif = runner
+            .parse_clippy_output(line, Path::new("/p"), &policy)
+            .unwrap();
+        assert_eq!(sarif.runs[0].results[0].level.as_deref(), Some("error"));
+
+        let sarif = runner
+            .parse_clippy_output(line, Path::new("/p"), &DenyPolicy::default())
+            .unwrap();
+        assert_eq!(sarif.runs[0].results[0].level.as_deref(), Some("warning"));
+    }
+
+    #[test]
+    fn test_failed_units_parsed_from_stderr() {
+        let stderr = "error: could not compile `foo` (lib) due to 2 previous errors\n\
+                      warning: build failed, waiting for other jobs to finish...\n\
+                      error: could not compile `bar` (test \"it\") due to 1 previous error\n";
+        assert_eq!(
+            failed_units(stderr),
+            vec!["foo (lib)".to_string(), "bar (test \"it\")".to_string()]
+        );
+        assert!(failed_units("    Finished `dev` profile").is_empty());
     }
 
     #[test]
@@ -316,7 +420,7 @@ mod tests {
     #[test]
     fn test_parse_empty_output() {
         let runner = ClippyRunner;
-        let result = runner.parse_clippy_output(b"", Path::new("/test"));
+        let result = runner.parse_clippy_output(b"", Path::new("/test"), &DenyPolicy::default());
         assert!(result.is_ok());
         let sarif = result.unwrap();
         assert!(sarif.runs[0].results.is_empty());

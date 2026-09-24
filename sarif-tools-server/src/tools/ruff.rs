@@ -107,6 +107,7 @@ impl ToolRunner for RuffRunner {
             sarif,
             exit_code,
             stderr,
+            incomplete: None,
         })
     }
 }

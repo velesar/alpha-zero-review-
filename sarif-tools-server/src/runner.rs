@@ -35,6 +35,8 @@ pub struct ToolResult {
     pub exit_code: i32,
     /// Standard error output (if any)
     pub stderr: Option<String>,
+    /// Why the results do not cover the whole target, if they do not
+    pub incomplete: Option<String>,
 }
 
 /// Trait for tool runners

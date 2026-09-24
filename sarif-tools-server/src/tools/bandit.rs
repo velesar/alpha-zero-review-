@@ -116,6 +116,7 @@ impl ToolRunner for BanditRunner {
             sarif,
             exit_code,
             stderr,
+            incomplete: None,
         })
     }
 }

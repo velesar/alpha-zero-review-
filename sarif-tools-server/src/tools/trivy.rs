@@ -129,6 +129,7 @@ impl ToolRunner for TrivyRunner {
             sarif,
             exit_code,
             stderr,
+            incomplete: None,
         })
     }
 }

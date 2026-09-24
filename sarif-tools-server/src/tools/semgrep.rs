@@ -119,6 +119,7 @@ impl ToolRunner for SemgrepRunner {
             sarif,
             exit_code,
             stderr,
+            incomplete: None,
         })
     }
 }
