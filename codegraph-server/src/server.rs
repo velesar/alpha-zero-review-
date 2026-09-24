@@ -27,10 +27,8 @@ use std::sync::{Arc, RwLock};
 /// Codegraph MCP Server
 #[derive(Clone)]
 pub struct CodegraphServer {
-    /// Single graph for backward compatibility (explicit load_index)
+    /// Loaded graph (indexes for several languages are merged into one)
     graph: Arc<RwLock<Option<Codegraph>>>,
-    /// Multiple graphs keyed by language (auto-loaded)
-    graphs: Arc<RwLock<HashMap<Language, Codegraph>>>,
     /// Project path for index management
     project_path: Arc<RwLock<Option<PathBuf>>>,
     tool_router: ToolRouter<Self>,
@@ -94,7 +92,7 @@ pub struct FindHotspotsInput {
 /// Input for get_module_deps
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ModuleDepsInput {
-    /// Path to module/file
+    /// File path or directory prefix (e.g. "src/auth/")
     pub module_path: String,
 }
 
@@ -103,6 +101,24 @@ pub struct ModuleDepsInput {
 pub struct CallersResponse {
     pub caller_count: usize,
     pub callers: Vec<CallerInfo>,
+}
+
+/// Callees response
+#[derive(Debug, Serialize)]
+pub struct CalleesResponse {
+    pub callee_count: usize,
+    pub callees: Vec<CalleeInfo>,
+}
+
+/// A symbol referenced from within another symbol's body
+#[derive(Debug, Serialize)]
+pub struct CalleeInfo {
+    pub symbol_id: String,
+    pub name: String,
+    /// File where the callee is defined (None for external symbols)
+    pub defined_in: Option<String>,
+    /// Lines within the caller's body where the callee is referenced
+    pub lines: Vec<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,33 +133,9 @@ impl CodegraphServer {
     pub fn new() -> Self {
         Self {
             graph: Arc::new(RwLock::new(None)),
-            graphs: Arc::new(RwLock::new(HashMap::new())),
             project_path: Arc::new(RwLock::new(None)),
             tool_router: Self::tool_router(),
         }
-    }
-
-    /// Helper to get any available graph (prefers multi-graph, falls back to single)
-    #[allow(dead_code)] // Helper for future multi-graph support
-    fn get_any_graph(
-        &self,
-    ) -> Result<std::sync::RwLockReadGuard<'_, Option<Codegraph>>, rmcp::ErrorData> {
-        // First check if we have graphs loaded via load_project_indexes
-        let graphs = self
-            .graphs
-            .read()
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
-
-        if !graphs.is_empty() {
-            // We have multi-graphs, but this helper returns Option<Codegraph>
-            // For now, we'll fall through to single graph logic
-            // In a real impl, we'd merge or pick the right one
-            drop(graphs);
-        }
-
-        self.graph
-            .read()
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))
     }
 
     /// Validate that a path is safe to access
@@ -289,42 +281,33 @@ impl CodegraphServer {
         let manager = IndexManager::new(project_path);
         let result = manager.auto_load_or_build(input.build_if_missing);
 
-        // Load all discovered indexes into our graphs map
-        let mut loaded_count = 0;
-        let mut total_symbols = 0;
-        let mut total_files = 0;
+        // Merge all discovered indexes into one graph so every query sees
+        // every language.
+        let mut merged = Codegraph::new();
+        let mut loaded_languages: Vec<Language> = Vec::new();
+        let mut warnings = result.warnings.clone();
 
-        for status in &result.loaded {
-            if status.exists {
-                match Codegraph::load_from_scip(&status.path) {
-                    Ok(graph) => {
-                        total_symbols += graph.symbols_count();
-                        total_files += graph.files_count();
-                        self.graphs
-                            .write()
-                            .map_err(|e| {
-                                rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-                            })?
-                            .insert(status.language, graph);
-                        loaded_count += 1;
-                    }
-                    Err(e) => {
-                        // Add to warnings but continue
-                        tracing::warn!("Failed to load {} index: {}", status.language, e);
-                    }
+        for status in result.loaded.iter().filter(|s| s.exists) {
+            match Codegraph::load_from_scip(&status.path) {
+                Ok(graph) => {
+                    merged.merge(graph);
+                    loaded_languages.push(status.language);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load {} index: {}", status.language, e);
+                    warnings.push(format!("Failed to load {} index: {}", status.language, e));
                 }
             }
         }
 
-        // Also set the first loaded graph as the default single graph for backward compatibility
+        let loaded_count = loaded_languages.len();
+        let total_symbols = merged.symbols_count();
+        let total_files = merged.files_count();
+
         if loaded_count > 0 {
-            if let Some(status) = result.loaded.first() {
-                if let Ok(graph) = Codegraph::load_from_scip(&status.path) {
-                    *self.graph.write().map_err(|e| {
-                        rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-                    })? = Some(graph);
-                }
-            }
+            *self.graph.write().map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
+            })? = Some(merged);
         }
 
         let response = serde_json::json!({
@@ -332,9 +315,9 @@ impl CodegraphServer {
             "loaded_count": loaded_count,
             "total_symbols": total_symbols,
             "total_files": total_files,
-            "languages": result.loaded.iter().map(|s| s.language.to_string()).collect::<Vec<_>>(),
+            "languages": loaded_languages.iter().map(|l| l.to_string()).collect::<Vec<_>>(),
             "missing": result.missing.iter().map(|l| l.to_string()).collect::<Vec<_>>(),
-            "warnings": result.warnings,
+            "warnings": warnings,
         });
 
         let json = serde_json::to_string_pretty(&response).map_err(|e| {
@@ -436,18 +419,35 @@ impl CodegraphServer {
             )
         })?;
 
-        let callees = graph.get_callees(&input.symbol_id);
+        if graph.get_symbol(&input.symbol_id).is_none() {
+            return Err(rmcp::ErrorData::invalid_params(
+                format!("Symbol not found: {}", input.symbol_id),
+                None,
+            ));
+        }
 
-        let response = CallersResponse {
-            caller_count: callees.len(),
-            callers: callees
-                .iter()
-                .map(|r| CallerInfo {
-                    file: r.file.clone(),
-                    line: r.line,
-                    role: format!("{:?}", r.role),
-                })
-                .collect(),
+        // Group reference occurrences by the referenced symbol
+        let mut by_symbol: HashMap<&str, CalleeInfo> = HashMap::new();
+        for reference in graph.get_callees(&input.symbol_id) {
+            let entry = by_symbol
+                .entry(reference.symbol_id.as_str())
+                .or_insert_with(|| {
+                    let symbol = graph.get_symbol(&reference.symbol_id);
+                    CalleeInfo {
+                        symbol_id: reference.symbol_id.clone(),
+                        name: symbol.map(|s| s.name.clone()).unwrap_or_default(),
+                        defined_in: symbol.map(|s| s.file.clone()).filter(|f| !f.is_empty()),
+                        lines: Vec::new(),
+                    }
+                });
+            entry.lines.push(reference.line);
+        }
+        let mut callees: Vec<CalleeInfo> = by_symbol.into_values().collect();
+        callees.sort_by_key(|c| c.lines.first().copied());
+
+        let response = CalleesResponse {
+            callee_count: callees.len(),
+            callees,
         };
 
         let json = serde_json::to_string_pretty(&response).map_err(|e| {
@@ -489,7 +489,9 @@ impl CodegraphServer {
     }
 
     /// Get module dependencies
-    #[tool(description = "Get dependencies of a module/file (what other files it depends on)")]
+    #[tool(
+        description = "Get dependencies of a module (file or directory prefix): depends_on = files it references, dependents = files that reference it"
+    )]
     async fn get_module_deps(
         &self,
         input: Parameters<ModuleDepsInput>,

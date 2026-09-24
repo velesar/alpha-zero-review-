@@ -76,8 +76,12 @@ pub struct Impact {
 #[derive(Debug, Clone, Serialize)]
 pub struct ModuleDeps {
     pub module: String,
+    pub files: Vec<String>,
     pub symbols_count: usize,
+    /// Files outside the module whose symbols this module references (file -> reference count)
     pub depends_on: HashMap<String, usize>,
+    /// Files outside the module that reference this module's symbols (file -> reference count)
+    pub dependents: HashMap<String, usize>,
 }
 
 /// Hotspot symbol
@@ -101,6 +105,8 @@ pub struct Codegraph {
     pub references: HashMap<String, Vec<Reference>>,
     /// Symbols by file: file_path -> [symbol_ids]
     pub file_symbols: HashMap<String, Vec<String>>,
+    /// Definition bodies (SCIP enclosing_range): symbol_id -> range
+    pub bodies: HashMap<String, Range>,
 }
 
 impl Codegraph {
@@ -110,9 +116,6 @@ impl Codegraph {
     }
 
     /// Load codegraph from a SCIP index file
-    ///
-    /// Note: This is a simplified parser. Full SCIP support would require
-    /// proper protobuf parsing.
     pub fn load_from_scip(path: &Path) -> Result<Self, std::io::Error> {
         let data = std::fs::read(path)?;
         Self::parse_scip_index(&data)
@@ -157,7 +160,7 @@ impl Codegraph {
                     kind: kind.clone(),
                     name,
                     file: file_path.clone(),
-                    range: Range::default(), // Will be updated from occurrences
+                    range: Range::default(), // Set from the definition occurrence below
                     documentation,
                 };
 
@@ -176,15 +179,22 @@ impl Codegraph {
                     continue;
                 }
 
-                // Parse SCIP range format: [startLine, startChar, endLine, endChar] or [startLine, startChar, endChar]
-                let (line, _col) = if occ.range.len() >= 2 {
-                    (occ.range[0] as u32, occ.range[1] as u32)
-                } else {
-                    (0, 0)
-                };
+                let range = Self::parse_scip_range(&occ.range).unwrap_or_default();
+                let line = range.start_line;
 
                 // Determine if this is a definition or reference based on symbol_roles
                 let is_definition = occ.symbol_roles & (scip::SymbolRole::Definition as i32) != 0;
+
+                if is_definition {
+                    if let Some(symbol) = graph.symbols.get_mut(&symbol_id) {
+                        if symbol.file == file_path {
+                            symbol.range = range.clone();
+                        }
+                    }
+                    if let Some(body) = Self::parse_scip_range(&occ.enclosing_range) {
+                        graph.bodies.insert(symbol_id.clone(), body);
+                    }
+                }
 
                 let reference = Reference {
                     symbol_id: symbol_id.clone(),
@@ -245,6 +255,54 @@ impl Codegraph {
         Ok(graph)
     }
 
+    /// Parse a SCIP range: [startLine, startChar, endLine, endChar] or
+    /// [startLine, startChar, endChar] for single-line ranges.
+    fn parse_scip_range(range: &[i32]) -> Option<Range> {
+        let r = |i: usize| range[i].max(0) as u32;
+        match range.len() {
+            3 => Some(Range {
+                start_line: r(0),
+                start_column: r(1),
+                end_line: r(0),
+                end_column: r(2),
+            }),
+            4 => Some(Range {
+                start_line: r(0),
+                start_column: r(1),
+                end_line: r(2),
+                end_column: r(3),
+            }),
+            _ => None,
+        }
+    }
+
+    /// Whether a SCIP symbol is local to a document (e.g. "local 3")
+    fn is_local_symbol(symbol_id: &str) -> bool {
+        symbol_id.starts_with("local ")
+    }
+
+    /// Whether a SCIP symbol names a function/method (`().`) or type (`#`),
+    /// i.e. something whose definition bounds the body of the previous one.
+    fn is_item_symbol(symbol_id: &str) -> bool {
+        symbol_id.ends_with("().") || symbol_id.ends_with('#')
+    }
+
+    /// Merge another graph into this one (e.g. indexes for several languages).
+    /// SCIP symbol IDs carry the indexer scheme, so they do not collide.
+    pub fn merge(&mut self, other: Codegraph) {
+        self.symbols.extend(other.symbols);
+        for (id, refs) in other.definitions {
+            self.definitions.entry(id).or_default().extend(refs);
+        }
+        for (id, refs) in other.references {
+            self.references.entry(id).or_default().extend(refs);
+        }
+        for (file, ids) in other.file_symbols {
+            self.file_symbols.entry(file).or_default().extend(ids);
+        }
+        self.bodies.extend(other.bodies);
+    }
+
     /// Extract a readable name from a SCIP symbol string
     fn extract_symbol_name(symbol_id: &str) -> String {
         // SCIP symbol format: "scheme package descriptor"
@@ -287,7 +345,6 @@ impl Codegraph {
     }
 
     /// Add a symbol to the graph
-    #[allow(dead_code)]
     pub fn add_symbol(&mut self, symbol: Symbol) {
         let id = symbol.id.clone();
         let file = symbol.file.clone();
@@ -296,8 +353,12 @@ impl Codegraph {
         self.file_symbols.entry(file).or_default().push(id);
     }
 
+    /// Set the body range of a symbol's definition
+    pub fn set_body(&mut self, symbol_id: &str, body: Range) {
+        self.bodies.insert(symbol_id.to_string(), body);
+    }
+
     /// Add a reference
-    #[allow(dead_code)]
     pub fn add_reference(&mut self, reference: Reference) {
         let symbol_id = reference.symbol_id.clone();
 
@@ -327,11 +388,69 @@ impl Codegraph {
             .unwrap_or_default()
     }
 
-    /// Get callees from a symbol (symbols referenced within its definition)
-    pub fn get_callees(&self, _symbol_id: &str) -> Vec<&Reference> {
-        // Would need scope analysis to implement properly
-        // For now, return empty
-        Vec::new()
+    /// Line span of a symbol's definition body.
+    ///
+    /// Uses the SCIP `enclosing_range` when the indexer emitted one. Otherwise
+    /// approximates the body as running from the definition to the line before
+    /// the next function/type definition in the same file (or end of file).
+    pub fn body_lines(&self, symbol_id: &str) -> Option<(String, u32, u32)> {
+        let (file, line) = match self.definitions.get(symbol_id).and_then(|d| d.first()) {
+            Some(def) => (def.file.clone(), def.line),
+            None => {
+                let symbol = self.symbols.get(symbol_id).filter(|s| !s.file.is_empty())?;
+                (symbol.file.clone(), symbol.range.start_line)
+            }
+        };
+
+        if let Some(body) = self.bodies.get(symbol_id) {
+            return Some((file, body.start_line, body.end_line));
+        }
+
+        let next_def = self
+            .definitions
+            .iter()
+            .filter(|(id, _)| id.as_str() != symbol_id && Self::is_item_symbol(id))
+            .flat_map(|(_, defs)| defs)
+            .filter(|d| d.file == file && d.line > line)
+            .map(|d| d.line)
+            .min();
+
+        Some((file, line, next_def.map(|l| l - 1).unwrap_or(u32::MAX)))
+    }
+
+    /// Get callees from a symbol: references to other symbols made within its
+    /// definition body, sorted by line. Local symbols are excluded.
+    pub fn get_callees(&self, symbol_id: &str) -> Vec<&Reference> {
+        let Some((file, start, end)) = self.body_lines(symbol_id) else {
+            return Vec::new();
+        };
+
+        let mut callees: Vec<&Reference> = self
+            .references
+            .iter()
+            .filter(|(id, _)| id.as_str() != symbol_id && !Self::is_local_symbol(id))
+            .flat_map(|(_, refs)| refs)
+            .filter(|r| r.file == file && r.line >= start && r.line <= end)
+            .collect();
+        callees.sort_by_key(|r| r.line);
+        callees
+    }
+
+    /// Files in which a symbol is defined. A symbol can have several
+    /// definitions (e.g. a crate root shared by lib.rs, main.rs and tests).
+    fn defining_files(&self, symbol_id: &str) -> Vec<&str> {
+        let mut files: Vec<&str> = self
+            .definitions
+            .get(symbol_id)
+            .map(|defs| defs.iter().map(|d| d.file.as_str()).collect())
+            .unwrap_or_default();
+        if files.is_empty() {
+            if let Some(symbol) = self.symbols.get(symbol_id).filter(|s| !s.file.is_empty()) {
+                files.push(symbol.file.as_str());
+            }
+        }
+        files.dedup();
+        files
     }
 
     /// Get impact analysis for a symbol
@@ -346,30 +465,58 @@ impl Codegraph {
         }
     }
 
-    /// Get module dependencies
+    /// Get module dependencies.
+    ///
+    /// `module_path` is a file path or a directory prefix (e.g. "src/auth/").
+    /// `depends_on` lists files outside the module whose symbols it references;
+    /// `dependents` lists files outside the module that reference its symbols.
     pub fn get_module_deps(&self, module_path: &str) -> ModuleDeps {
-        let symbol_ids = self.file_symbols.get(module_path);
-        let symbols_count = symbol_ids.map(|ids| ids.len()).unwrap_or(0);
+        let dir_prefix = format!("{}/", module_path.trim_end_matches('/'));
+        let in_module = |file: &str| file == module_path || file.starts_with(&dir_prefix);
 
-        let mut deps: HashMap<String, usize> = HashMap::new();
+        let mut files: Vec<String> = self
+            .file_symbols
+            .keys()
+            .filter(|f| in_module(f))
+            .cloned()
+            .collect();
+        files.sort();
 
-        if let Some(ids) = symbol_ids {
-            for id in ids {
-                if let Some(refs) = self.references.get(id) {
-                    for reference in refs {
-                        *deps.entry(reference.file.clone()).or_default() += 1;
-                    }
+        let symbols_count = files
+            .iter()
+            .filter_map(|f| self.file_symbols.get(f))
+            .map(|ids| ids.len())
+            .sum();
+
+        let mut depends_on: HashMap<String, usize> = HashMap::new();
+        let mut dependents: HashMap<String, usize> = HashMap::new();
+
+        for (symbol_id, refs) in &self.references {
+            if Self::is_local_symbol(symbol_id) {
+                continue;
+            }
+            let def_files = self.defining_files(symbol_id);
+            let Some(&def_file) = def_files.first() else {
+                continue;
+            };
+            let def_inside = def_files.iter().any(|f| in_module(f));
+
+            for reference in refs {
+                let ref_inside = in_module(&reference.file);
+                if ref_inside && !def_inside {
+                    *depends_on.entry(def_file.to_string()).or_default() += 1;
+                } else if !ref_inside && def_inside {
+                    *dependents.entry(reference.file.clone()).or_default() += 1;
                 }
             }
         }
 
-        // Remove self-references
-        deps.remove(module_path);
-
         ModuleDeps {
             module: module_path.to_string(),
+            files,
             symbols_count,
-            depends_on: deps,
+            depends_on,
+            dependents,
         }
     }
 
@@ -439,11 +586,12 @@ impl Serialize for Codegraph {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Codegraph", 4)?;
+        let mut state = serializer.serialize_struct("Codegraph", 5)?;
         state.serialize_field("symbols", &self.symbols)?;
         state.serialize_field("definitions", &self.definitions)?;
         state.serialize_field("references", &self.references)?;
         state.serialize_field("file_symbols", &self.file_symbols)?;
+        state.serialize_field("bodies", &self.bodies)?;
         state.end()
     }
 }
@@ -459,6 +607,8 @@ impl<'de> Deserialize<'de> for Codegraph {
             definitions: HashMap<String, Vec<Reference>>,
             references: HashMap<String, Vec<Reference>>,
             file_symbols: HashMap<String, Vec<String>>,
+            #[serde(default)]
+            bodies: HashMap<String, Range>,
         }
 
         let helper = CodegraphHelper::deserialize(deserializer)?;
@@ -467,6 +617,7 @@ impl<'de> Deserialize<'de> for Codegraph {
             definitions: helper.definitions,
             references: helper.references,
             file_symbols: helper.file_symbols,
+            bodies: helper.bodies,
         })
     }
 }
