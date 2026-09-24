@@ -22,7 +22,9 @@ pub fn mcp_json(agent_dir: &Path, target_dir: &Path) -> String {
             },
             "sarif-tools": {
                 "command": agent_dir.join("target/release/sarif-tools-server").to_string_lossy(),
-                "args": []
+                "args": [
+                    "--mappings-path", agent_dir.join("methodology_kb/taxonomies/rule_mapping.yaml").to_string_lossy()
+                ]
             },
             "codegraph": {
                 "command": agent_dir.join("target/release/codegraph-server").to_string_lossy(),
@@ -92,7 +94,13 @@ pub fn codex_mcp_servers(
                 .join("target/release/sarif-tools-server")
                 .to_string_lossy()
                 .to_string(),
-            args: vec![],
+            args: vec![
+                "--mappings-path".to_string(),
+                agent_dir
+                    .join("methodology_kb/taxonomies/rule_mapping.yaml")
+                    .to_string_lossy()
+                    .to_string(),
+            ],
         },
     );
 
@@ -131,7 +139,9 @@ pub fn cline_mcp_settings(agent_dir: &Path, target_dir: &Path) -> String {
             },
             "sarif-tools": {
                 "command": agent_dir.join("target/release/sarif-tools-server").to_string_lossy(),
-                "args": [],
+                "args": [
+                    "--mappings-path", agent_dir.join("methodology_kb/taxonomies/rule_mapping.yaml").to_string_lossy()
+                ],
                 "disabled": false
             },
             "codegraph": {

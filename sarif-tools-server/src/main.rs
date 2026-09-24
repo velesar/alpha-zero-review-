@@ -45,7 +45,14 @@ async fn main() -> Result<()> {
     tracing::info!("Starting SARIF Tools MCP Server");
 
     // Create the server
-    let server = server::SarifToolsServer::new(args.mappings_path);
+    let mappings_path = args.mappings_path.or_else(default_mappings_path);
+    match &mappings_path {
+        Some(path) => tracing::info!("Rule mappings: {:?}", path),
+        None => {
+            tracing::warn!("No rule mappings found; normalize_sarif will not categorize results")
+        }
+    }
+    let server = server::SarifToolsServer::new(mappings_path);
 
     // Run with stdio transport
     let service = server.serve(rmcp::transport::stdio()).await?;
@@ -56,4 +63,13 @@ async fn main() -> Result<()> {
     tracing::info!("SARIF Tools MCP Server shutting down");
 
     Ok(())
+}
+
+/// Locate the KB rule mappings relative to the binary
+/// (`<agent>/target/<profile>/sarif-tools-server` -> `<agent>/methodology_kb/...`).
+fn default_mappings_path() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let agent_dir = exe.parent()?.parent()?.parent()?;
+    let path = agent_dir.join("methodology_kb/taxonomies/rule_mapping.yaml");
+    path.exists().then_some(path)
 }

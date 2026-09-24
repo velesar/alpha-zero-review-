@@ -121,8 +121,7 @@ pub struct GetCategoryInput {
 pub struct GetTemplateInput {
     /// Template type (e.g., "executive_summary", "root_cause")
     pub template_type: String,
-    /// Output format (markdown, html)
-    #[allow(dead_code)]
+    /// Output format (only "markdown" is currently available)
     #[serde(default = "default_format")]
     pub format: String,
 }
@@ -646,24 +645,48 @@ impl MethodologyKBServer {
         input: Parameters<GetTemplateInput>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let template = self.kb.templates.get(&input.template_type);
 
-        if let Some(template) = template {
-            Ok(CallToolResult::success(vec![Content::text(
-                template.content.clone(),
-            )]))
-        } else {
-            // Return a default template
-            let default_template = match input.template_type.as_str() {
-                "executive_summary" => include_str!("../templates/executive_summary.md"),
-                "root_cause" => include_str!("../templates/root_cause.md"),
-                _ => "Template not found",
-            };
-
-            Ok(CallToolResult::success(vec![Content::text(
-                default_template,
-            )]))
+        if !input.format.eq_ignore_ascii_case("markdown") {
+            return Err(rmcp::ErrorData::invalid_params(
+                format!(
+                    "Unsupported template format: {} (only markdown is available)",
+                    input.format
+                ),
+                None,
+            ));
         }
+
+        if let Some(template) = self.kb.templates.get(&input.template_type) {
+            return Ok(CallToolResult::success(vec![Content::text(
+                template.content.clone(),
+            )]));
+        }
+
+        // Built-in fallbacks when the KB has no such template
+        let builtin = match input.template_type.as_str() {
+            "executive_summary" => include_str!("../templates/executive_summary.md"),
+            "root_cause" => include_str!("../templates/root_cause.md"),
+            _ => {
+                let mut available: Vec<&str> =
+                    self.kb.templates.keys().map(|k| k.as_str()).collect();
+                for name in ["executive_summary", "root_cause"] {
+                    if !available.contains(&name) {
+                        available.push(name);
+                    }
+                }
+                available.sort();
+                return Err(rmcp::ErrorData::invalid_params(
+                    format!(
+                        "Template not found: {}. Available: {}",
+                        input.template_type,
+                        available.join(", ")
+                    ),
+                    None,
+                ));
+            }
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(builtin)]))
     }
 
     /// List available metrics

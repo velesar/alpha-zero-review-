@@ -21,7 +21,10 @@
       "command": "./target/release/methodology-kb-server"
     },
     "sarif-tools": {
-      "args": [],
+      "args": [
+        "--mappings-path",
+        "./methodology_kb/taxonomies/rule_mapping.yaml"
+      ],
       "command": "./target/release/sarif-tools-server"
     }
   }

@@ -17,6 +17,44 @@ use std::process::Command;
 /// Clippy runner
 pub struct ClippyRunner;
 
+/// Build `cargo` arguments for a clippy run.
+///
+/// Cargo options come first; rustc lint flags (`-D ...`) all go after a
+/// single `--` separator.
+fn clippy_args(config: Option<&ToolConfig>) -> Vec<String> {
+    let mut args = vec!["clippy".to_string(), "--message-format=json".to_string()];
+    let mut lint_args = Vec::new();
+
+    if let Some(cfg) = config {
+        if let Some(ConfigValue::Bool(true)) = cfg.options.get("all_targets") {
+            args.push("--all-targets".to_string());
+        }
+        if let Some(ConfigValue::Bool(true)) = cfg.options.get("all_features") {
+            args.push("--all-features".to_string());
+        }
+        if let Some(ConfigValue::String(features)) = cfg.options.get("features") {
+            args.push("--features".to_string());
+            args.push(features.clone());
+        }
+        if let Some(ConfigValue::Bool(true)) = cfg.options.get("deny_warnings") {
+            lint_args.push("-D".to_string());
+            lint_args.push("warnings".to_string());
+        }
+        if let Some(ConfigValue::Array(deny_lints)) = cfg.options.get("deny") {
+            for lint_name in deny_lints {
+                lint_args.push("-D".to_string());
+                lint_args.push(lint_name.clone());
+            }
+        }
+    }
+
+    if !lint_args.is_empty() {
+        args.push("--".to_string());
+        args.extend(lint_args);
+    }
+    args
+}
+
 /// Clippy diagnostic from JSON output
 #[derive(Debug, Deserialize)]
 struct ClippyDiagnostic {
@@ -91,39 +129,7 @@ impl ToolRunner for ClippyRunner {
         }
 
         let mut cmd = Command::new("cargo");
-        cmd.arg("clippy")
-            .arg("--message-format=json")
-            .current_dir(path);
-
-        // Apply configuration
-        if let Some(cfg) = config {
-            // All targets flag
-            if let Some(ConfigValue::Bool(true)) = cfg.options.get("all_targets") {
-                cmd.arg("--all-targets");
-            }
-
-            // All features flag
-            if let Some(ConfigValue::Bool(true)) = cfg.options.get("all_features") {
-                cmd.arg("--all-features");
-            }
-
-            // Specific features from options
-            if let Some(ConfigValue::String(features)) = cfg.options.get("features") {
-                cmd.arg("--features").arg(features);
-            }
-
-            // Deny warnings
-            if let Some(ConfigValue::Bool(true)) = cfg.options.get("deny_warnings") {
-                cmd.arg("--").arg("-D").arg("warnings");
-            }
-
-            // Specific lints to deny from options (as array)
-            if let Some(ConfigValue::Array(deny_lints)) = cfg.options.get("deny") {
-                for lint_name in deny_lints {
-                    cmd.arg("--").arg("-D").arg(lint_name);
-                }
-            }
-        }
+        cmd.args(clippy_args(config)).current_dir(path);
 
         tracing::debug!("Running clippy: {:?}", cmd);
 
@@ -264,6 +270,35 @@ impl ClippyRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_clippy_args_use_single_separator() {
+        let mut cfg = ToolConfig::default();
+        cfg.options
+            .insert("all_targets".to_string(), ConfigValue::Bool(true));
+        cfg.options
+            .insert("deny_warnings".to_string(), ConfigValue::Bool(true));
+        cfg.options.insert(
+            "deny".to_string(),
+            ConfigValue::Array(vec!["clippy::unwrap_used".to_string()]),
+        );
+
+        let args = clippy_args(Some(&cfg));
+        assert_eq!(
+            args,
+            vec![
+                "clippy",
+                "--message-format=json",
+                "--all-targets",
+                "--",
+                "-D",
+                "warnings",
+                "-D",
+                "clippy::unwrap_used"
+            ]
+        );
+        assert_eq!(clippy_args(None), vec!["clippy", "--message-format=json"]);
+    }
 
     #[test]
     fn test_clippy_languages() {
