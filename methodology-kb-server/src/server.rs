@@ -174,15 +174,18 @@ fn path_matches(pattern: &str, path: &str) -> bool {
 #[tool_router]
 impl MethodologyKBServer {
     pub fn new(kb_path: PathBuf) -> Self {
+        Self::with_project_path(kb_path, None)
+    }
+
+    /// Create a server for an explicit audited project (whose
+    /// `.audit/artifacts` holds cached tool output). Defaults to the current
+    /// working directory.
+    pub fn with_project_path(kb_path: PathBuf, project_path: Option<PathBuf>) -> Self {
         let (kb, _errors) = Self::load_kb(&kb_path);
 
-        // Get project path from current directory or parent of kb_path
-        let project_path = std::env::current_dir().unwrap_or_else(|_| {
-            kb_path
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| PathBuf::from("."))
-        });
+        let project_path = project_path
+            .or_else(|| std::env::current_dir().ok())
+            .unwrap_or_else(|| PathBuf::from("."));
 
         Self {
             kb_path,

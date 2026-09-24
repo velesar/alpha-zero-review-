@@ -23,6 +23,10 @@ struct Args {
     #[arg(long, default_value = "./methodology_kb/")]
     kb_path: PathBuf,
 
+    /// Audited project directory (default: current directory)
+    #[arg(long)]
+    project_path: Option<PathBuf>,
+
     /// Enable debug logging
     #[arg(long, short)]
     debug: bool,
@@ -46,7 +50,7 @@ async fn main() -> Result<()> {
     tracing::info!("KB path: {:?}", args.kb_path);
 
     // Create the server
-    let server = server::MethodologyKBServer::new(args.kb_path);
+    let server = server::MethodologyKBServer::with_project_path(args.kb_path, args.project_path);
 
     // Run with stdio transport
     let service = server.serve(rmcp::transport::stdio()).await?;

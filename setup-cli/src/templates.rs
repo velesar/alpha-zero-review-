@@ -17,7 +17,8 @@ pub fn mcp_json(agent_dir: &Path, target_dir: &Path) -> String {
             "methodology-kb": {
                 "command": agent_dir.join("target/release/methodology-kb-server").to_string_lossy(),
                 "args": [
-                    "--kb-path", agent_dir.join("methodology_kb/").to_string_lossy()
+                    "--kb-path", agent_dir.join("methodology_kb/").to_string_lossy(),
+                    "--project-path", target_dir.to_string_lossy()
                 ]
             },
             "sarif-tools": {
@@ -83,6 +84,8 @@ pub fn codex_mcp_servers(
                     .join("methodology_kb/")
                     .to_string_lossy()
                     .to_string(),
+                "--project-path".to_string(),
+                target_dir.to_string_lossy().to_string(),
             ],
         },
     );
@@ -133,7 +136,8 @@ pub fn cline_mcp_settings(agent_dir: &Path, target_dir: &Path) -> String {
             "methodology-kb": {
                 "command": agent_dir.join("target/release/methodology-kb-server").to_string_lossy(),
                 "args": [
-                    "--kb-path", agent_dir.join("methodology_kb/").to_string_lossy()
+                    "--kb-path", agent_dir.join("methodology_kb/").to_string_lossy(),
+                    "--project-path", target_dir.to_string_lossy()
                 ],
                 "disabled": false
             },
