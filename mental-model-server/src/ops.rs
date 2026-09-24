@@ -52,8 +52,51 @@ pub fn parse_severity(severity_str: &str) -> Severity {
     }
 }
 
-/// Synthesize findings by category
-pub fn synthesize_by_category(findings: &[Finding]) -> Vec<RootCause> {
+/// Maximum number of root causes reported by synthesis
+pub const MAX_ROOT_CAUSES: usize = 5;
+
+/// Result of clustering findings into root causes
+#[derive(Debug, Clone, Default)]
+pub struct Synthesis {
+    /// Highest-impact root causes (at most `MAX_ROOT_CAUSES`)
+    pub root_causes: Vec<RootCause>,
+    /// Lower-ranked clusters that did not fit, so nothing is dropped silently
+    pub omitted: Vec<RootCause>,
+    /// Findings that did not join any cluster (e.g. alone in their directory)
+    pub ungrouped_findings: usize,
+}
+
+fn highest_severity(findings: &[&Finding]) -> Severity {
+    findings
+        .iter()
+        .map(|f| f.adjusted_severity.clone())
+        .max()
+        .unwrap_or(Severity::Info)
+}
+
+fn split_top(mut root_causes: Vec<RootCause>, ungrouped_findings: usize) -> Synthesis {
+    let omitted = if root_causes.len() > MAX_ROOT_CAUSES {
+        root_causes.split_off(MAX_ROOT_CAUSES)
+    } else {
+        Vec::new()
+    };
+    Synthesis {
+        root_causes,
+        omitted,
+        ungrouped_findings,
+    }
+}
+
+fn finding_word(count: usize) -> &'static str {
+    if count == 1 {
+        "finding"
+    } else {
+        "findings"
+    }
+}
+
+/// Synthesize findings by category, most severe clusters first
+pub fn synthesize_by_category(findings: &[Finding]) -> Synthesis {
     let mut category_groups: HashMap<String, Vec<&Finding>> = HashMap::new();
 
     for finding in findings {
@@ -66,38 +109,37 @@ pub fn synthesize_by_category(findings: &[Finding]) -> Vec<RootCause> {
     let mut root_causes = Vec::new();
 
     for (category, findings) in category_groups {
-        if findings.is_empty() {
-            continue;
-        }
+        let impact = highest_severity(&findings);
 
-        // Calculate aggregate impact
-        let max_severity = findings
-            .iter()
-            .map(|f| &f.adjusted_severity)
-            .max()
-            .cloned()
-            .unwrap_or(Severity::Info);
-
-        // Collect affected areas
-        let affected_areas: Vec<String> = findings
+        let mut affected_areas: Vec<String> = findings
             .iter()
             .filter_map(|f| f.context.as_ref().and_then(|c| c.bounded_context.clone()))
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect();
+        affected_areas.sort();
 
-        // Generate recommendations based on category
         let recommendations = generate_recommendations(&category, &findings);
+
+        let description = format!(
+            "{} {} in category '{}' (highest severity {:?}){}.",
+            findings.len(),
+            finding_word(findings.len()),
+            category,
+            impact,
+            if affected_areas.is_empty() {
+                String::new()
+            } else {
+                format!(", affecting {}", affected_areas.join(", "))
+            }
+        );
 
         root_causes.push(RootCause {
             id: format!("RC-{}", Uuid::new_v4().to_string()[..8].to_uppercase()),
             title: format!("{} Issues", capitalize_first(&category)),
-            description: format!(
-                "Multiple {} issues detected across the codebase affecting code quality and maintainability.",
-                category
-            ),
+            description,
             category: category.clone(),
-            impact: max_severity,
+            impact,
             finding_ids: findings.iter().map(|f| f.id.clone()).collect(),
             finding_count: findings.len() as u32,
             affected_areas,
@@ -105,17 +147,19 @@ pub fn synthesize_by_category(findings: &[Finding]) -> Vec<RootCause> {
         });
     }
 
-    // Sort by impact
-    root_causes.sort_by(|a, b| b.impact.cmp(&a.impact));
+    // Most severe first, then larger clusters, then name for determinism
+    root_causes.sort_by(|a, b| {
+        b.impact
+            .cmp(&a.impact)
+            .then(b.finding_count.cmp(&a.finding_count))
+            .then(a.category.cmp(&b.category))
+    });
 
-    // Limit to top 5
-    root_causes.truncate(5);
-
-    root_causes
+    split_top(root_causes, 0)
 }
 
-/// Synthesize findings by location
-pub fn synthesize_by_location(findings: &[Finding]) -> Vec<RootCause> {
+/// Synthesize findings by location (directory), largest clusters first
+pub fn synthesize_by_location(findings: &[Finding]) -> Synthesis {
     let mut location_groups: HashMap<String, Vec<&Finding>> = HashMap::new();
 
     for finding in findings {
@@ -129,36 +173,37 @@ pub fn synthesize_by_location(findings: &[Finding]) -> Vec<RootCause> {
     }
 
     let mut root_causes = Vec::new();
+    let mut ungrouped_findings = 0;
 
     for (location, findings) in location_groups {
         if findings.len() < 2 {
-            continue; // Need at least 2 findings to form a root cause
+            // A single finding does not make a location cluster
+            ungrouped_findings += findings.len();
+            continue;
         }
 
-        let max_severity = findings
-            .iter()
-            .map(|f| &f.adjusted_severity)
-            .max()
-            .cloned()
-            .unwrap_or(Severity::Info);
+        let impact = highest_severity(&findings);
 
-        let categories: Vec<String> = findings
+        let mut categories: Vec<String> = findings
             .iter()
             .map(|f| f.category.clone())
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect();
+        categories.sort();
 
         root_causes.push(RootCause {
             id: format!("RC-{}", Uuid::new_v4().to_string()[..8].to_uppercase()),
             title: format!("Quality Issues in {}", location),
             description: format!(
-                "Multiple quality issues concentrated in {}. Categories: {}",
+                "{} findings concentrated in {} (highest severity {:?}). Categories: {}",
+                findings.len(),
                 location,
+                impact,
                 categories.join(", ")
             ),
             category: "location_cluster".to_string(),
-            impact: max_severity,
+            impact,
             finding_ids: findings.iter().map(|f| f.id.clone()).collect(),
             finding_count: findings.len() as u32,
             affected_areas: vec![location],
@@ -169,10 +214,14 @@ pub fn synthesize_by_location(findings: &[Finding]) -> Vec<RootCause> {
         });
     }
 
-    root_causes.sort_by(|a, b| b.finding_count.cmp(&a.finding_count));
-    root_causes.truncate(5);
+    root_causes.sort_by(|a, b| {
+        b.finding_count
+            .cmp(&a.finding_count)
+            .then(b.impact.cmp(&a.impact))
+            .then(a.title.cmp(&b.title))
+    });
 
-    root_causes
+    split_top(root_causes, ungrouped_findings)
 }
 
 /// Generate recommendations based on category
@@ -288,8 +337,95 @@ mod tests {
     #[test]
     fn test_synthesize_by_category_empty() {
         let findings: Vec<Finding> = vec![];
-        let root_causes = synthesize_by_category(&findings);
-        assert!(root_causes.is_empty());
+        let synthesis = synthesize_by_category(&findings);
+        assert!(synthesis.root_causes.is_empty());
+        assert!(synthesis.omitted.is_empty());
+    }
+
+    fn finding(id: &str, category: &str, file: &str, severity: Severity) -> Finding {
+        Finding {
+            id: id.to_string(),
+            viewpoint: "VP-Q01".to_string(),
+            category: category.to_string(),
+            title: id.to_string(),
+            description: String::new(),
+            file_path: file.to_string(),
+            line_number: None,
+            base_severity: severity.clone(),
+            adjusted_severity: severity,
+            rule_id: None,
+            context: None,
+            recommendation: None,
+        }
+    }
+
+    #[test]
+    fn test_severity_orders_by_seriousness() {
+        assert!(Severity::Critical > Severity::High);
+        assert!(Severity::High > Severity::Medium);
+        assert!(Severity::Medium > Severity::Low);
+        assert!(Severity::Low > Severity::Info);
+        let max = [Severity::Info, Severity::Critical, Severity::Low]
+            .into_iter()
+            .max();
+        assert_eq!(max, Some(Severity::Critical));
+    }
+
+    #[test]
+    fn test_synthesis_keeps_most_severe_clusters() {
+        // Six categories: five low-severity clusters with several findings
+        // each, and one category with a single critical finding.
+        let mut findings = Vec::new();
+        for (i, cat) in ["docs", "style", "naming", "perf", "dup"]
+            .iter()
+            .enumerate()
+        {
+            for j in 0..3 {
+                findings.push(finding(
+                    &format!("F-{}{}", i, j),
+                    cat,
+                    "src/a.rs",
+                    Severity::Low,
+                ));
+            }
+        }
+        findings.push(finding("F-SEC", "security", "src/b.rs", Severity::Medium));
+        findings.push(finding(
+            "F-SEC2",
+            "security",
+            "src/b.rs",
+            Severity::Critical,
+        ));
+
+        let synthesis = synthesize_by_category(&findings);
+
+        assert_eq!(synthesis.root_causes.len(), MAX_ROOT_CAUSES);
+        assert_eq!(synthesis.root_causes[0].category, "security");
+        assert_eq!(synthesis.root_causes[0].impact, Severity::Critical);
+        assert!(synthesis.root_causes[0]
+            .description
+            .starts_with("2 findings"));
+        assert_eq!(synthesis.omitted.len(), 1);
+        let reported: u32 = synthesis
+            .root_causes
+            .iter()
+            .chain(&synthesis.omitted)
+            .map(|rc| rc.finding_count)
+            .sum();
+        assert_eq!(reported as usize, findings.len());
+    }
+
+    #[test]
+    fn test_synthesis_by_location_reports_ungrouped() {
+        let findings = vec![
+            finding("F-1", "security", "src/a/x.rs", Severity::Critical),
+            finding("F-2", "style", "src/a/y.rs", Severity::Low),
+            finding("F-3", "style", "src/b/z.rs", Severity::Low),
+        ];
+        let synthesis = synthesize_by_location(&findings);
+        assert_eq!(synthesis.root_causes.len(), 1);
+        assert_eq!(synthesis.root_causes[0].impact, Severity::Critical);
+        assert_eq!(synthesis.ungrouped_findings, 1);
     }
 
     #[test]

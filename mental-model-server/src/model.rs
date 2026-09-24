@@ -28,8 +28,12 @@ pub enum Risk {
     Low,
 }
 
-/// Severity level for findings
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord)]
+/// Severity level for findings.
+///
+/// Ordered by seriousness: `Info < Low < Medium < High < Critical`, so
+/// `max()` yields the most severe value. The ordering is implemented
+/// explicitly rather than derived so it does not depend on variant order.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Severity {
     Critical,
@@ -39,7 +43,30 @@ pub enum Severity {
     Info,
 }
 
+impl Ord for Severity {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.rank().cmp(&other.rank())
+    }
+}
+
+impl PartialOrd for Severity {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl Severity {
+    /// Rank used for ordering (higher is more severe)
+    fn rank(&self) -> u8 {
+        match self {
+            Severity::Info => 0,
+            Severity::Low => 1,
+            Severity::Medium => 2,
+            Severity::High => 3,
+            Severity::Critical => 4,
+        }
+    }
+
     /// Get numeric score for severity calculation
     pub fn score(&self) -> f64 {
         match self {
