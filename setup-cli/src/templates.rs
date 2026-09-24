@@ -291,6 +291,7 @@ sarif-tools/run_tool { "tool": "bandit", "path": "src/" }
 - **ALWAYS use methodology-kb to classify finding severity** - raw tool output is not context-aware
 - **ALWAYS use codegraph for impact analysis** - understand what code is critical before making recommendations
 - **NEVER present raw findings** - always synthesize into root causes
+- **Check data shapes** - `mental-model/get_viewpoint_schema` gives the exact `update_viewpoint` schema; read the note listing unused fields in its reply
 "#
 }
 
@@ -360,6 +361,7 @@ Run a full code audit using the viewpoints framework
 2. **Context-Aware Findings**: Always enrich findings with business context
 3. **No Raw Dumps**: Synthesize into 3-5 root causes, not 800+ findings
 4. **Fowler Quadrant**: Classify debt as Prudent/Reckless × Deliberate/Inadvertent
+5. **Exact Shapes**: `mental-model/get_viewpoint_schema` returns the schema `update_viewpoint` expects; tool errors name unknown fields and invalid values, so fix the input rather than retrying
 "#
 }
 

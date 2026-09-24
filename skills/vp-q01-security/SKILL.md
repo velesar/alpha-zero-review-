@@ -131,7 +131,7 @@ Call `mental-model/add_findings` with all findings at once:
     },
     {
       "viewpoint": "VP-Q01",
-      "category": "security_secrets",
+      "category": "security_auth",
       "title": "Hardcoded API key",
       "description": "API key embedded in source code",
       "file_path": "src/config/settings.py",

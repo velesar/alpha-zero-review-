@@ -119,7 +119,7 @@ Call `mental-model/update_viewpoint` with:
 ```yaml
 viewpoint: "VP-F02"
 data:
-  root_layout: "monorepo|single-app|multi-package"
+  root_layout: "single-app"  # one of: monorepo, single-app, multi-package
   source_roots:
     - "src/"
     - "lib/"

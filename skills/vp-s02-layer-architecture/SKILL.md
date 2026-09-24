@@ -194,7 +194,7 @@ Call `mental-model/update_viewpoint` with:
 viewpoint: "VP-S02"
 data:
   pattern: "clean_architecture"
-  confidence: "high|medium|low"
+  confidence: "medium"  # one of: high, medium, low
   layers:
     - name: "domain"
       paths:
