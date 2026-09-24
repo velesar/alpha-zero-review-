@@ -95,16 +95,32 @@ For each layer identified:
 Call `methodology-kb/check_compliance` with:
 ```json
 {
-  "standard": "clean_architecture|layered_architecture|hexagonal_architecture",
+  "standard": "clean_architecture|layered_architecture|hexagonal_architecture|RUST-HEX-001",
   "detected_pattern": {
     "layers": [
       {"name": "domain", "paths": ["src/domain"]},
       {"name": "application", "paths": ["src/application"]}
     ],
-    "violations": []
+    "violations": [
+      {
+        "from_layer": "domain",
+        "to_layer": "infrastructure",
+        "file_path": "src/domain/order.rs",
+        "line_number": 12,
+        "import_path": "crate::db::pool",
+        "severity": "high"
+      }
+    ]
   }
 }
 ```
+
+Report every cross-layer dependency you observe in `violations`; the tool
+checks each against the standard's `dependency_rules` and
+`allowed_dependencies`. Allowed ones come back in `allowed_dependencies`,
+forbidden ones in `violations` (with the standard's reason), and layers the
+standard does not know in `warnings`. Layer names may be the standard's
+aliases. Only the fields shown above are accepted for a violation.
 
 ### Step 5: Find Layer Violations
 

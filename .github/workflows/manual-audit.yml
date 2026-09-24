@@ -25,6 +25,9 @@ on:
         type: number
         default: 30
 
+permissions:
+  contents: read
+
 env:
   AUDIT_DIR: .audit/artifacts
 
@@ -93,7 +96,7 @@ jobs:
 
       - name: Run Trivy (dependencies)
         if: inputs.audit_scope == 'full' || inputs.audit_scope == 'dependencies-only'
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'

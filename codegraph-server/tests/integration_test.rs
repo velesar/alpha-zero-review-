@@ -530,3 +530,52 @@ fn test_server_creation_and_info() {
     assert!(info.instructions.is_some());
     assert!(info.instructions.unwrap().contains("Codegraph"));
 }
+
+#[test]
+fn test_scip_local_symbols_are_scoped_per_document() {
+    use codegraph_server::scip;
+    use prost::Message;
+
+    let definition = scip::SymbolRole::Definition as i32;
+    let doc = |path: &str, refs: usize| scip::Document {
+        relative_path: path.to_string(),
+        symbols: vec![scip::SymbolInformation {
+            symbol: "local 0".to_string(),
+            ..Default::default()
+        }],
+        occurrences: std::iter::once(scip::Occurrence {
+            symbol: "local 0".to_string(),
+            range: vec![0, 4, 5],
+            symbol_roles: definition,
+            ..Default::default()
+        })
+        .chain((0..refs).map(|i| scip::Occurrence {
+            symbol: "local 0".to_string(),
+            range: vec![i as i32 + 1, 4, 5],
+            ..Default::default()
+        }))
+        .collect(),
+        ..Default::default()
+    };
+
+    let index = scip::Index {
+        documents: vec![doc("a.rs", 2), doc("b.rs", 3)],
+        ..Default::default()
+    };
+
+    let temp_dir = TempDir::new().unwrap();
+    let path = temp_dir.path().join("index.scip");
+    fs::write(&path, index.encode_to_vec()).unwrap();
+    let graph = Codegraph::load_from_scip(&path).unwrap();
+
+    assert!(graph.get_symbol("local 0").is_none());
+    assert_eq!(graph.get_callers("a.rs#local 0").len(), 2);
+    assert_eq!(graph.get_callers("b.rs#local 0").len(), 3);
+    assert!(graph
+        .get_callers("a.rs#local 0")
+        .iter()
+        .all(|r| r.file == "a.rs"));
+
+    // Locals are variables, not hotspots
+    assert!(graph.find_hotspots(1, None).is_empty());
+}

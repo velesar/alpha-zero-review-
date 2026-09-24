@@ -56,6 +56,11 @@ pub struct RunToolOutput {
     pub exit_code: i32,
     pub stderr: Option<String>,
     pub result_count: usize,
+    /// False when part of the target could not be analyzed
+    pub complete: bool,
+    /// Why the results are partial
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub incomplete_reason: Option<String>,
 }
 
 /// Input for merge_sarif
@@ -150,6 +155,8 @@ impl SarifToolsServer {
             exit_code: result.exit_code,
             stderr: result.stderr,
             result_count: result.result_count,
+            complete: result.incomplete.is_none(),
+            incomplete_reason: result.incomplete,
         };
 
         format_json_response(&output)

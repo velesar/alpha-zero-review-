@@ -47,42 +47,26 @@ impl RuleMappingsIndex {
     }
 }
 
-/// Detected violation for compliance checking (domain type)
-///
-/// This is a pure domain type with no framework dependencies.
-#[derive(Debug, Clone)]
-pub struct DetectedViolation {
-    /// Rule that was violated
-    pub rule: String,
-    /// Description of the violation
-    pub description: String,
-    /// Severity of the violation
-    pub severity: String,
-    /// Location where the violation was detected
-    pub location: Option<String>,
+/// A dependency between two layers observed in the code (e.g. by VP-S02),
+/// to be checked against a standard's rules
+#[derive(Debug, Clone, Default)]
+pub struct LayerDependency {
+    pub from_layer: String,
+    pub to_layer: String,
+    pub file_path: Option<String>,
+    pub line_number: Option<u32>,
+    pub description: Option<String>,
+    /// Severity suggested by the caller (defaults to HIGH for violations)
+    pub severity: Option<String>,
 }
 
-impl DetectedViolation {
-    /// Create a new violation
-    pub fn new(rule: impl Into<String>, description: impl Into<String>) -> Self {
+impl LayerDependency {
+    pub fn new(from_layer: impl Into<String>, to_layer: impl Into<String>) -> Self {
         Self {
-            rule: rule.into(),
-            description: description.into(),
-            severity: "MEDIUM".to_string(),
-            location: None,
+            from_layer: from_layer.into(),
+            to_layer: to_layer.into(),
+            ..Self::default()
         }
-    }
-
-    /// Set severity
-    pub fn with_severity(mut self, severity: impl Into<String>) -> Self {
-        self.severity = severity.into();
-        self
-    }
-
-    /// Set location
-    pub fn with_location(mut self, location: impl Into<String>) -> Self {
-        self.location = Some(location.into());
-        self
     }
 }
 
@@ -114,14 +98,11 @@ mod tests {
     }
 
     #[test]
-    fn test_detected_violation_builder() {
-        let violation = DetectedViolation::new("domain_import", "Domain imports infrastructure")
-            .with_severity("CRITICAL")
-            .with_location("src/domain/mod.rs:15");
-
-        assert_eq!(violation.rule, "domain_import");
-        assert_eq!(violation.severity, "CRITICAL");
-        assert!(violation.location.is_some());
+    fn test_layer_dependency_new() {
+        let dep = LayerDependency::new("domain", "infrastructure");
+        assert_eq!(dep.from_layer, "domain");
+        assert_eq!(dep.to_layer, "infrastructure");
+        assert!(dep.severity.is_none());
     }
 
     #[test]

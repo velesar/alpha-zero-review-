@@ -20,6 +20,8 @@ pub struct ExecuteToolOutput {
     pub exit_code: i32,
     pub stderr: Option<String>,
     pub result_count: usize,
+    /// Why the results are partial (None when the whole target was analyzed)
+    pub incomplete: Option<String>,
 }
 
 /// Output from merging SARIF files
@@ -97,6 +99,7 @@ pub fn execute_tool(
         exit_code: result.exit_code,
         stderr: result.stderr,
         result_count,
+        incomplete: result.incomplete,
     })
 }
 

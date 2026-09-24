@@ -433,7 +433,7 @@ impl MentalModelServer {
         model
             .apply_viewpoint(&input.viewpoint, input.data)
             .map_err(|e| {
-                rmcp::ErrorData::internal_error(format!("Apply viewpoint error: {}", e), None)
+                rmcp::ErrorData::invalid_params(format!("Apply viewpoint error: {}", e), None)
             })?;
 
         // Recalculate constraints
@@ -611,7 +611,7 @@ impl MentalModelServer {
             })?
         };
 
-        let root_causes = match input.algorithm.as_str() {
+        let synthesis = match input.algorithm.as_str() {
             "category_based" => ops::synthesize_by_category(&findings),
             "location_based" => ops::synthesize_by_location(&findings),
             other => {
@@ -624,7 +624,7 @@ impl MentalModelServer {
             .model
             .write()
             .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
-        model.root_causes = root_causes.clone();
+        model.root_causes = synthesis.root_causes.clone();
 
         drop(model);
         // ADR-0006: End of audit - flush all pending changes
@@ -632,14 +632,42 @@ impl MentalModelServer {
         self.flush_if_dirty()
             .map_err(|e| rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None))?;
 
-        let json = serde_json::to_string_pretty(&root_causes).map_err(|e| {
+        let covered: u32 = synthesis
+            .root_causes
+            .iter()
+            .map(|rc| rc.finding_count)
+            .sum();
+        let omitted: Vec<serde_json::Value> = synthesis
+            .omitted
+            .iter()
+            .map(|rc| {
+                serde_json::json!({
+                    "title": rc.title,
+                    "impact": rc.impact,
+                    "finding_count": rc.finding_count,
+                    "finding_ids": rc.finding_ids,
+                })
+            })
+            .collect();
+
+        let response = serde_json::json!({
+            "total_findings": findings.len(),
+            "root_causes": synthesis.root_causes,
+            "omitted_clusters": omitted,
+            "ungrouped_findings": synthesis.ungrouped_findings,
+        });
+        let json = serde_json::to_string_pretty(&response).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Synthesized {} root causes from {} findings\n\n{}",
-            root_causes.len(),
-            root_causes.iter().map(|rc| rc.finding_count).sum::<u32>(),
+            "Synthesized {} root causes covering {} of {} findings \
+             ({} lower-ranked clusters omitted, {} findings ungrouped)\n\n{}",
+            synthesis.root_causes.len(),
+            covered,
+            findings.len(),
+            synthesis.omitted.len(),
+            synthesis.ungrouped_findings,
             json
         ))]))
     }

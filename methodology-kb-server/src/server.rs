@@ -5,6 +5,8 @@
 //! and checking compliance.
 
 use crate::acquisition::{DataAcquisition, DataSource};
+use crate::domain::LayerDependency;
+use crate::ops;
 use crate::types::*;
 use anyhow::Result;
 use rmcp::{
@@ -103,10 +105,46 @@ pub struct GetThresholdsInput {
 /// Input for check_compliance tool
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CheckComplianceInput {
-    /// Standard to check against (e.g., "clean_architecture", "layered")
+    /// Standard id to check against (see list_standards), e.g. "clean_architecture"
     pub standard: String,
-    /// Detected architecture pattern
-    pub detected_pattern: serde_json::Value,
+    /// Detected architecture (VP-S02 `architecture` output)
+    pub detected_pattern: DetectedPatternInput,
+}
+
+/// Detected architecture pattern (VP-S02 output shape)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DetectedPatternInput {
+    /// Detected layers; names or aliases of the standard's layers
+    #[serde(default)]
+    pub layers: Vec<DetectedLayerInput>,
+    /// Observed dependencies between layers, checked against the standard
+    #[serde(default)]
+    pub violations: Vec<LayerDependencyInput>,
+}
+
+/// A detected layer (other VP-S02 fields such as paths are accepted and ignored)
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DetectedLayerInput {
+    pub name: String,
+}
+
+/// An observed dependency from one layer to another
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LayerDependencyInput {
+    pub from_layer: String,
+    pub to_layer: String,
+    #[serde(default)]
+    pub file_path: Option<String>,
+    #[serde(default)]
+    pub import_path: Option<String>,
+    #[serde(default)]
+    pub line_number: Option<u32>,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Suggested severity if this is a violation (default HIGH)
+    #[serde(default)]
+    pub severity: Option<String>,
 }
 
 /// Input for get_category tool
@@ -531,112 +569,48 @@ impl MethodologyKBServer {
         input: Parameters<CheckComplianceInput>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let standard = self.kb.standards.get(&input.standard);
+        let standard = self.kb.standards.get(&input.standard).ok_or_else(|| {
+            let mut available: Vec<&str> = self.kb.standards.keys().map(|k| k.as_str()).collect();
+            available.sort();
+            rmcp::ErrorData::invalid_params(
+                format!(
+                    "Standard not found: {}. Available: {}",
+                    input.standard,
+                    available.join(", ")
+                ),
+                None,
+            )
+        })?;
 
-        if let Some(standard) = standard {
-            let mut violations = Vec::new();
-            let mut score: f64 = 100.0;
+        let detected_layers: Vec<String> = input
+            .detected_pattern
+            .layers
+            .into_iter()
+            .map(|l| l.name)
+            .collect();
+        let dependencies: Vec<LayerDependency> = input
+            .detected_pattern
+            .violations
+            .into_iter()
+            .map(|v| LayerDependency {
+                from_layer: v.from_layer,
+                to_layer: v.to_layer,
+                file_path: v.file_path,
+                line_number: v.line_number,
+                description: v
+                    .description
+                    .or(v.import_path.map(|p| format!("imports {}", p))),
+                severity: v.severity,
+            })
+            .collect();
 
-            // Parse detected pattern
-            let detected_layers: Vec<String> = input
-                .detected_pattern
-                .get("layers")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-                        .map(String::from)
-                        .collect()
-                })
-                .unwrap_or_default();
+        let result = ops::check_compliance(standard, &detected_layers, &dependencies);
 
-            // Check for required layers
-            for required_layer in &standard.layers {
-                let found = detected_layers.iter().any(|l| {
-                    l.to_lowercase() == required_layer.name.to_lowercase()
-                        || required_layer
-                            .aliases
-                            .iter()
-                            .any(|a| a.to_lowercase() == l.to_lowercase())
-                });
+        let json = serde_json::to_string_pretty(&result).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
 
-                if !found {
-                    violations.push(ComplianceViolation {
-                        rule: format!("Required layer: {}", required_layer.name),
-                        description: format!(
-                            "Missing {} layer. Purpose: {}",
-                            required_layer.name, required_layer.purpose
-                        ),
-                        severity: "MEDIUM".to_string(),
-                        location: None,
-                    });
-                    score -= 15.0;
-                }
-            }
-
-            // Check dependency rules
-            if let Some(detected_violations) = input
-                .detected_pattern
-                .get("violations")
-                .and_then(|v| v.as_array())
-            {
-                for violation in detected_violations {
-                    let from = violation
-                        .get("from_layer")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
-                    let to = violation
-                        .get("to_layer")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
-
-                    violations.push(ComplianceViolation {
-                        rule: format!("Dependency rule: {} -> {}", from, to),
-                        description: format!("Invalid dependency from {} to {}", from, to),
-                        severity: "HIGH".to_string(),
-                        location: violation
-                            .get("file_path")
-                            .and_then(|v| v.as_str())
-                            .map(String::from),
-                    });
-                    score -= 10.0;
-                }
-            }
-
-            let result = ComplianceResult {
-                standard: standard.name.clone(),
-                compliant: violations.is_empty(),
-                score: score.max(0.0),
-                violations,
-                recommendations: if score < 70.0 {
-                    vec![
-                        "Review and enforce layer boundaries".to_string(),
-                        "Consider using dependency injection to invert problematic dependencies"
-                            .to_string(),
-                        "Add architectural fitness functions to CI pipeline".to_string(),
-                    ]
-                } else {
-                    vec![]
-                },
-            };
-
-            let json = serde_json::to_string_pretty(&result).map_err(|e| {
-                rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
-            })?;
-
-            Ok(CallToolResult::success(vec![Content::text(json)]))
-        } else {
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "Standard '{}' not found. Available standards: {}",
-                input.standard,
-                self.kb
-                    .standards
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ))]))
-        }
+        Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Get a report template

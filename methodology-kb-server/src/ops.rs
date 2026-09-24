@@ -7,8 +7,8 @@
 //! framework dependencies like serde_json in function signatures.
 //! Serialization/deserialization happens at adapter boundaries.
 
-use crate::domain::{DetectedViolation, RuleMappingsIndex};
-use crate::types::ArchitectureStandard;
+use crate::domain::{LayerDependency, RuleMappingsIndex};
+use crate::types::{ArchitectureStandard, StandardLayer};
 
 /// Severity score mapping
 pub fn severity_to_score(severity: &str) -> f64 {
@@ -167,6 +167,10 @@ pub struct ComplianceResult {
     pub score: f64,
     pub violations: Vec<ComplianceViolation>,
     pub recommendations: Vec<String>,
+    /// Reported dependencies that the standard allows (not violations)
+    pub allowed_dependencies: Vec<String>,
+    /// Input that could not be evaluated (e.g. layers unknown to the standard)
+    pub warnings: Vec<String>,
 }
 
 /// A compliance violation
@@ -180,27 +184,78 @@ pub struct ComplianceViolation {
     pub location: Option<String>,
 }
 
-/// Check compliance against a standard
+/// Find the standard's layer for a name or alias (case-insensitive)
+fn resolve_layer<'a>(standard: &'a ArchitectureStandard, name: &str) -> Option<&'a StandardLayer> {
+    standard.layers.iter().find(|layer| {
+        layer.name.eq_ignore_ascii_case(name)
+            || layer.aliases.iter().any(|a| a.eq_ignore_ascii_case(name))
+    })
+}
+
+/// Whether the standard allows `from` to depend on `to`, and why.
 ///
-/// Uses domain types instead of serde_json::Value.
+/// An explicit `dependency_rules` entry wins; otherwise the source layer's
+/// `allowed_dependencies` decide (a layer may always depend on itself).
+fn dependency_allowed(
+    standard: &ArchitectureStandard,
+    from: &StandardLayer,
+    to: &StandardLayer,
+) -> (bool, Option<String>) {
+    if let Some(rule) = standard
+        .dependency_rules
+        .iter()
+        .find(|r| r.from.eq_ignore_ascii_case(&from.name) && r.to.eq_ignore_ascii_case(&to.name))
+    {
+        return (rule.allowed, rule.reason.clone());
+    }
+    let allowed = from.name.eq_ignore_ascii_case(&to.name)
+        || from
+            .allowed_dependencies
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(&to.name));
+    let reason = (!allowed).then(|| {
+        format!(
+            "{} may only depend on: {}",
+            from.name,
+            if from.allowed_dependencies.is_empty() {
+                "nothing".to_string()
+            } else {
+                from.allowed_dependencies.join(", ")
+            }
+        )
+    });
+    (allowed, reason)
+}
+
+/// Check detected layers and layer dependencies against a standard.
+///
+/// Required layers are matched by name or alias. Each reported dependency is
+/// evaluated against the standard's rules: allowed ones are listed in
+/// `allowed_dependencies`, forbidden ones become violations, and layers the
+/// standard does not define are reported as warnings.
 pub fn check_compliance(
     standard: &ArchitectureStandard,
     detected_layers: &[String],
-    detected_violations: &[DetectedViolation],
+    dependencies: &[LayerDependency],
 ) -> ComplianceResult {
     let mut violations = Vec::new();
+    let mut allowed_dependencies = Vec::new();
+    let mut warnings = Vec::new();
     let mut score: f64 = 100.0;
 
-    // Check required layers
     for required_layer in &standard.layers {
-        let layer_exists = detected_layers
+        let found = detected_layers
             .iter()
-            .any(|l| l.to_lowercase() == required_layer.name.to_lowercase());
-
-        if !layer_exists {
+            .filter_map(|l| resolve_layer(standard, l))
+            .any(|l| l.name == required_layer.name);
+        if !found {
             violations.push(ComplianceViolation {
                 rule: format!("Required layer: {}", required_layer.name),
-                description: format!("Missing {} layer", required_layer.name),
+                description: format!(
+                    "Missing {} layer. Purpose: {}",
+                    required_layer.name,
+                    required_layer.purpose.trim()
+                ),
                 severity: "MEDIUM".to_string(),
                 location: None,
             });
@@ -208,18 +263,66 @@ pub fn check_compliance(
         }
     }
 
-    // Process detected violations
-    for violation in detected_violations {
+    for dep in dependencies {
+        let (Some(from), Some(to)) = (
+            resolve_layer(standard, &dep.from_layer),
+            resolve_layer(standard, &dep.to_layer),
+        ) else {
+            let unknown: Vec<&str> = [&dep.from_layer, &dep.to_layer]
+                .into_iter()
+                .filter(|l| resolve_layer(standard, l).is_none())
+                .map(|l| l.as_str())
+                .collect();
+            warnings.push(format!(
+                "{} -> {}: layer(s) not defined by {}: {}",
+                dep.from_layer,
+                dep.to_layer,
+                standard.id,
+                unknown.join(", ")
+            ));
+            continue;
+        };
+
+        let location = dep.file_path.as_ref().map(|f| match dep.line_number {
+            Some(line) => format!("{}:{}", f, line),
+            None => f.clone(),
+        });
+
+        let (allowed, reason) = dependency_allowed(standard, from, to);
+        if allowed {
+            allowed_dependencies.push(format!(
+                "{} -> {}{}",
+                from.name,
+                to.name,
+                location.map(|l| format!(" ({})", l)).unwrap_or_default()
+            ));
+            continue;
+        }
+
+        let description = match (&dep.description, &reason) {
+            (Some(d), Some(r)) => format!("{} ({})", d, r),
+            (Some(d), None) => d.clone(),
+            (None, Some(r)) => r.clone(),
+            (None, None) => format!("{} must not depend on {}", from.name, to.name),
+        };
         violations.push(ComplianceViolation {
-            rule: violation.rule.clone(),
-            description: violation.description.clone(),
-            severity: violation.severity.clone(),
-            location: violation.location.clone(),
+            rule: format!("Dependency rule: {} -> {}", from.name, to.name),
+            description,
+            severity: dep
+                .severity
+                .as_deref()
+                .map(str::to_uppercase)
+                .unwrap_or_else(|| "HIGH".to_string()),
+            location,
         });
         score -= 10.0;
     }
 
-    let recommendations = generate_compliance_recommendations(score);
+    let recommendations = if violations.is_empty() {
+        Vec::new()
+    } else {
+        generate_compliance_recommendations(score)
+    };
 
     ComplianceResult {
         standard: standard.name.clone(),
@@ -227,6 +330,8 @@ pub fn check_compliance(
         score: score.max(0.0),
         violations,
         recommendations,
+        allowed_dependencies,
+        warnings,
     }
 }
 
@@ -348,31 +453,91 @@ mod tests {
         assert_eq!(generate_compliance_recommendations(30.0).len(), 3);
     }
 
-    #[test]
-    fn test_check_compliance_with_violations() {
-        use crate::types::{ArchitectureStandard, StandardLayer};
-
-        let standard = ArchitectureStandard {
-            id: "test".to_string(),
-            name: "Test Standard".to_string(),
-            description: "A test standard".to_string(),
-            layers: vec![StandardLayer {
-                name: "domain".to_string(),
-                aliases: vec![],
-                typical_paths: vec![],
-                purpose: "Business logic".to_string(),
-                allowed_dependencies: vec![],
-            }],
-            dependency_rules: vec![],
+    fn hexagonal_standard() -> ArchitectureStandard {
+        use crate::types::DependencyRule;
+        let layer = |name: &str, aliases: &[&str], allowed: &[&str]| StandardLayer {
+            name: name.to_string(),
+            aliases: aliases.iter().map(|s| s.to_string()).collect(),
+            typical_paths: vec![],
+            purpose: format!("{} layer", name),
+            allowed_dependencies: allowed.iter().map(|s| s.to_string()).collect(),
         };
+        ArchitectureStandard {
+            id: "HEX".to_string(),
+            name: "Hexagonal".to_string(),
+            description: String::new(),
+            layers: vec![
+                layer("domain", &["core"], &[]),
+                layer("inbound", &["handlers"], &["domain", "application"]),
+                layer("outbound", &["infrastructure"], &["domain"]),
+            ],
+            dependency_rules: vec![DependencyRule {
+                from: "inbound".to_string(),
+                to: "outbound".to_string(),
+                allowed: false,
+                reason: Some("Handlers go through ports".to_string()),
+            }],
+        }
+    }
 
-        let violations =
-            vec![DetectedViolation::new("test_rule", "Test violation").with_severity("HIGH")];
+    fn layers(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
 
-        let result = check_compliance(&standard, &["domain".to_string()], &violations);
+    #[test]
+    fn test_check_compliance_allowed_dependency_is_not_a_violation() {
+        let standard = hexagonal_standard();
+        let deps = vec![LayerDependency::new("inbound", "domain")];
+        let result = check_compliance(
+            &standard,
+            &layers(&["domain", "inbound", "outbound"]),
+            &deps,
+        );
+        assert!(result.compliant, "{:?}", result.violations);
+        assert_eq!(result.score, 100.0);
+        assert_eq!(result.allowed_dependencies, vec!["inbound -> domain"]);
+        assert!(result.recommendations.is_empty());
+    }
+
+    #[test]
+    fn test_check_compliance_uses_rules_aliases_and_caller_severity() {
+        let standard = hexagonal_standard();
+        let mut explicit = LayerDependency::new("handlers", "infrastructure");
+        explicit.file_path = Some("src/server.rs".to_string());
+        explicit.line_number = Some(42);
+        explicit.severity = Some("medium".to_string());
+        let implicit = LayerDependency::new("core", "outbound");
+
+        let result = check_compliance(
+            &standard,
+            &layers(&["core", "handlers", "infrastructure"]),
+            &[explicit, implicit],
+        );
 
         assert!(!result.compliant);
-        assert!(result.score < 100.0);
-        assert_eq!(result.violations.len(), 1);
+        assert_eq!(result.violations.len(), 2);
+        let first = &result.violations[0];
+        assert_eq!(first.rule, "Dependency rule: inbound -> outbound");
+        assert_eq!(first.severity, "MEDIUM");
+        assert_eq!(first.location.as_deref(), Some("src/server.rs:42"));
+        assert!(first.description.contains("Handlers go through ports"));
+        let second = &result.violations[1];
+        assert_eq!(second.severity, "HIGH");
+        assert!(second
+            .description
+            .contains("domain may only depend on: nothing"));
+        assert_eq!(result.score, 80.0);
+    }
+
+    #[test]
+    fn test_check_compliance_reports_missing_and_unknown_layers() {
+        let standard = hexagonal_standard();
+        let deps = vec![LayerDependency::new("presentation", "domain")];
+        let result = check_compliance(&standard, &layers(&["domain"]), &deps);
+
+        assert_eq!(result.violations.len(), 2); // inbound and outbound missing
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("presentation"));
+        assert_eq!(result.score, 70.0);
     }
 }

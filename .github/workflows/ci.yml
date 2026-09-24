@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -31,3 +34,19 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      # RUSTSEC-2026-0189: rmcp Streamable HTTP transport (DNS rebinding).
+      # All servers use the stdio transport only; remove once rmcp >= 1.4.
+      - name: Audit dependencies
+        run: cargo audit --ignore RUSTSEC-2026-0189
