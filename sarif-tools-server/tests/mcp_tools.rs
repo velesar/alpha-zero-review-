@@ -118,6 +118,23 @@ async fn run_tool_guards() {
     assert!(err.contains("allow_code_execution"), "{err}");
     c.err("run_tool", json!({"tool": "nope", "path": project}))
         .await;
+
+    // The self-audit nested options under "options"; that used to be
+    // ignored silently and now names the unknown key
+    let err = c
+        .err(
+            "run_tool",
+            json!({"tool": "clippy", "path": project,
+                   "config": {"options": {"all_targets": true}}}),
+        )
+        .await;
+    assert!(err.contains("unknown field `options`"), "{err}");
+    // Wrong value types are rejected too
+    c.err(
+        "run_tool",
+        json!({"tool": "ruff", "path": project, "config": {"line_length": "long"}}),
+    )
+    .await;
     c.err(
         "run_tool",
         json!({"tool": "clippy", "path": root.path().join("missing")}),

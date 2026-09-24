@@ -47,6 +47,15 @@ security_xss:
   parent: security
   weight: 1.5
 
+security_dependency:
+  id: security_dependency
+  name: Vulnerable Dependencies
+  description: >
+    Third-party packages with known vulnerabilities (CVE, GHSA advisories),
+    as reported by dependency scanners such as trivy.
+  parent: security
+  weight: 1.5
+
 reliability:
   id: reliability
   name: Reliability

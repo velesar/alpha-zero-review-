@@ -5,13 +5,13 @@
 //!
 //! This is the adapter layer that bridges MCP protocol to domain operations.
 
-use crate::domain::RuleMappings;
+use crate::domain::{RuleMappings, ToolConfig};
 use crate::ops;
 use crate::sarif::Sarif;
 use crate::tools::{ToolInfo, ToolRegistry};
 use crate::utils::{
-    format_json_response, format_prefixed_json_response, json_to_tool_config, load_rule_mappings,
-    parse_sarif_json, parse_sarif_values,
+    format_json_response, format_prefixed_json_response, load_rule_mappings, parse_sarif_json,
+    parse_sarif_values,
 };
 use rmcp::{
     handler::server::{
@@ -43,12 +43,120 @@ pub struct SarifToolsServer {
 /// Input for run_tool
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RunToolInput {
-    /// Tool to run (semgrep, bandit, ruff, trivy)
+    /// Tool to run (semgrep, bandit, ruff, trivy, clippy)
     pub tool: String,
-    /// Path to analyze
+    /// Path to analyze (must be under an allowed root)
     pub path: String,
-    /// Tool-specific configuration (optional)
-    pub config: Option<serde_json::Value>,
+    /// Tool options (optional). Unknown keys are rejected.
+    #[serde(default)]
+    pub config: Option<RunToolConfig>,
+}
+
+/// Options for run_tool. Each field lists the tools that read it.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RunToolConfig {
+    /// semgrep ruleset (e.g. "p/security-audit", default "auto") or a
+    /// config file for ruff/bandit/trivy
+    #[serde(default, alias = "config")]
+    pub rules: Option<String>,
+    /// Minimum severity (semgrep: INFO|WARNING|ERROR; bandit: low|medium|high;
+    /// trivy: comma-separated, e.g. "CRITICAL,HIGH")
+    #[serde(default)]
+    pub severity: Option<String>,
+    /// Paths or globs to exclude (semgrep, bandit, ruff, trivy)
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    /// clippy: runs the project's build scripts and proc macros; must be true
+    #[serde(default)]
+    pub allow_code_execution: bool,
+    /// clippy: include tests, benches and examples
+    #[serde(default)]
+    pub all_targets: bool,
+    /// clippy: enable all cargo features
+    #[serde(default)]
+    pub all_features: bool,
+    /// clippy: comma-separated cargo features
+    #[serde(default)]
+    pub features: Option<String>,
+    /// clippy: report every warning as an error
+    #[serde(default)]
+    pub deny_warnings: bool,
+    /// clippy: lints to enable and report as errors (e.g. "clippy::unwrap_used")
+    #[serde(default)]
+    pub deny: Vec<String>,
+    /// bandit: minimum confidence (low|medium|high)
+    #[serde(default)]
+    pub confidence: Option<String>,
+    /// bandit: comma-separated test ids to skip (e.g. "B101,B311")
+    #[serde(default)]
+    pub skip: Option<String>,
+    /// ruff: comma-separated rule selectors (e.g. "E,F,S")
+    #[serde(default)]
+    pub select: Option<String>,
+    /// ruff: comma-separated rules to ignore
+    #[serde(default)]
+    pub ignore: Option<String>,
+    /// ruff: maximum line length
+    #[serde(default)]
+    pub line_length: Option<u32>,
+    /// ruff: target Python version (e.g. "py311")
+    #[serde(default)]
+    pub target_version: Option<String>,
+    /// trivy: comma-separated scanners (e.g. "vuln,secret")
+    #[serde(default)]
+    pub scanners: Option<String>,
+    /// trivy: only report vulnerabilities with a fix
+    #[serde(default)]
+    pub ignore_unfixed: bool,
+    /// trivy: comma-separated files to skip
+    #[serde(default)]
+    pub skip_files: Option<String>,
+    /// trivy: timeout (e.g. "10m")
+    #[serde(default)]
+    pub timeout: Option<String>,
+}
+
+impl RunToolConfig {
+    /// Adapter: convert to the domain config the runners read
+    pub fn into_tool_config(self) -> ToolConfig {
+        use crate::domain::ConfigValue;
+
+        let mut config = ToolConfig::new();
+        config.config_source = self.rules;
+        config.severity = self.severity;
+        config.exclude_patterns = self.exclude;
+
+        let mut set = |key: &str, value: Option<ConfigValue>| {
+            if let Some(value) = value {
+                config.options.insert(key.to_string(), value);
+            }
+        };
+        let flag = |b: bool| b.then_some(ConfigValue::Bool(true));
+        let text = |s: Option<String>| s.map(ConfigValue::String);
+        let list = |v: Vec<String>| (!v.is_empty()).then_some(ConfigValue::Array(v));
+
+        set("allow_code_execution", flag(self.allow_code_execution));
+        set("all_targets", flag(self.all_targets));
+        set("all_features", flag(self.all_features));
+        set("features", text(self.features));
+        set("deny_warnings", flag(self.deny_warnings));
+        set("deny", list(self.deny));
+        set("confidence", text(self.confidence));
+        set("skip", text(self.skip));
+        set("select", text(self.select));
+        set("ignore", text(self.ignore));
+        set(
+            "line_length",
+            self.line_length.map(|n| ConfigValue::Number(n as f64)),
+        );
+        set("target_version", text(self.target_version));
+        set("scanners", text(self.scanners));
+        set("ignore_unfixed", flag(self.ignore_unfixed));
+        set("skip_files", text(self.skip_files));
+        set("timeout", text(self.timeout));
+        config
+    }
 }
 
 /// Output for run_tool
@@ -159,7 +267,7 @@ impl SarifToolsServer {
         tracing::info!("Running {} on {}", input.tool, path.display());
 
         // Adapter: Convert JSON config to domain type
-        let tool_config = input.config.as_ref().map(json_to_tool_config);
+        let tool_config = input.config.map(RunToolConfig::into_tool_config);
 
         let result = ops::execute_tool(&self.registry, &input.tool, &path, tool_config.as_ref())?;
 
@@ -402,6 +510,40 @@ impl ServerHandler for SarifToolsServer {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn run_tool_config_maps_to_runner_options() {
+        use crate::domain::ConfigValue;
+        let config: RunToolConfig = serde_json::from_value(serde_json::json!({
+            "config": "p/security-audit",
+            "exclude": ["tests/"],
+            "allow_code_execution": true,
+            "deny": ["clippy::unwrap_used"],
+            "line_length": 100,
+            "select": "E,F"
+        }))
+        .unwrap();
+        let tool_config = config.into_tool_config();
+        assert_eq!(
+            tool_config.config_source.as_deref(),
+            Some("p/security-audit")
+        );
+        assert_eq!(tool_config.exclude_patterns, vec!["tests/"]);
+        assert!(matches!(
+            tool_config.options.get("allow_code_execution"),
+            Some(ConfigValue::Bool(true))
+        ));
+        assert!(matches!(
+            tool_config.options.get("line_length"),
+            Some(ConfigValue::Number(n)) if *n == 100.0
+        ));
+        assert!(matches!(
+            tool_config.options.get("select"),
+            Some(ConfigValue::String(s)) if s == "E,F"
+        ));
+        // Unset flags are absent, not false
+        assert!(!tool_config.options.contains_key("all_targets"));
+    }
+
     use super::*;
 
     #[test]

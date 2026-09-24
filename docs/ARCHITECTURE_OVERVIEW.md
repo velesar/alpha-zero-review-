@@ -47,7 +47,7 @@ The AI Code Audit Agent is a Rust-based MCP (Model Context Protocol) toolkit des
 
 | Crate | LOC | Modules | MCP Tools | Tests |
 |-------|-----|---------|-----------|-------|
-| mental-model-server | 3,424 | 8 | 22 | 45 |
+| mental-model-server | 3,424 | 8 | 23 | 45 |
 | methodology-kb-server | 2,127 | 8 | 11 | 37 |
 | sarif-tools-server | 2,739 | 12 | 3 | 62 |
 | codegraph-server | 1,678 | 7 | 11 | 32 |

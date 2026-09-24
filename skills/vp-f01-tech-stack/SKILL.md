@@ -97,7 +97,7 @@ data:
   version: "<version>"
   framework: "<framework name>"
   framework_version: "<version>"
-  confidence: "high|medium|low"
+  confidence: "high"  # one of: high, medium, low
   additional_languages:
     - "<secondary language>"
   dependencies:

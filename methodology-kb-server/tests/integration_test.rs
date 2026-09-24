@@ -296,3 +296,44 @@ fn test_shipped_kb_loads_without_errors() {
     assert!(kb.standards.len() >= 4);
     assert!(!kb.templates.is_empty());
 }
+
+#[test]
+fn test_shipped_kb_categories_are_consistent() {
+    use methodology_kb_server::server::MethodologyKBServer;
+    use methodology_kb_server::types::AdjustmentCondition;
+
+    let kb_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../methodology_kb");
+    let (kb, _) = MethodologyKBServer::load_kb(&kb_path);
+
+    let mut unknown = Vec::new();
+    for mapping in &kb.rule_mappings {
+        if !kb.categories.contains_key(&mapping.category) {
+            unknown.push(format!(
+                "rule_mapping {}:{} -> {}",
+                mapping.tool, mapping.rule_id, mapping.category
+            ));
+        }
+    }
+    for rule in &kb.severity_adjustments {
+        if let AdjustmentCondition::CategoryMatch { category } = &rule.condition {
+            if !kb.categories.contains_key(category) {
+                unknown.push(format!(
+                    "severity_adjustment category_match -> {}",
+                    category
+                ));
+            }
+        }
+    }
+    for (id, category) in &kb.categories {
+        if let Some(parent) = &category.parent {
+            if !kb.categories.contains_key(parent) {
+                unknown.push(format!("category {} has unknown parent {}", id, parent));
+            }
+        }
+    }
+    assert!(
+        unknown.is_empty(),
+        "categories missing from taxonomies/categories.yaml:\n{}",
+        unknown.join("\n")
+    );
+}

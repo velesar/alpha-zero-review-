@@ -417,31 +417,31 @@
 
 - tool: ruff
   rule_id: E501
-  category: style
+  category: maintainability
   base_severity: INFO
   description: Line too long
 
 - tool: ruff
   rule_id: E711
-  category: bugs
+  category: reliability
   base_severity: LOW
   description: Comparison to None
 
 - tool: ruff
   rule_id: E712
-  category: bugs
+  category: reliability
   base_severity: LOW
   description: Comparison to True/False
 
 - tool: ruff
   rule_id: W291
-  category: style
+  category: maintainability
   base_severity: INFO
   description: Trailing whitespace
 
 - tool: ruff
   rule_id: W292
-  category: style
+  category: maintainability
   base_severity: INFO
   description: No newline at end of file
 
@@ -588,13 +588,13 @@
 # Trivy Rules (Vulnerability scanner)
 - tool: trivy
   rule_id: CVE-*
-  category: security_vulnerability
+  category: security_dependency
   base_severity: VARIES
   description: Known CVE vulnerability (severity from CVE database)
 
 - tool: trivy
   rule_id: GHSA-*
-  category: security_vulnerability
+  category: security_dependency
   base_severity: VARIES
   description: GitHub Security Advisory
 
