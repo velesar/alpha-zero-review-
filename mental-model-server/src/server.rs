@@ -37,6 +37,7 @@ pub struct MentalModelServer {
     model: Arc<RwLock<MentalModel>>,
     findings_store: Arc<Mutex<FindingsStore>>, // ADR-0007: separate findings storage
     artifact_store: Arc<ArtifactStore>,
+    audit_dir: PathBuf,
     dirty: Arc<AtomicBool>, // ADR-0006: tracks unsaved changes
     tool_router: ToolRouter<Self>,
 }
@@ -49,6 +50,7 @@ impl Clone for MentalModelServer {
             model: Arc::clone(&self.model),
             findings_store: Arc::clone(&self.findings_store),
             artifact_store: Arc::clone(&self.artifact_store),
+            audit_dir: self.audit_dir.clone(),
             dirty: Arc::clone(&self.dirty),
             tool_router: Self::tool_router(),
         }
@@ -183,8 +185,12 @@ pub struct GetFindingsByCategoryInput {
 /// Input for export_findings tool
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExportFindingsInput {
-    /// Output file path for JSON export
+    /// Output file, relative to the audit directory (e.g. "reports/findings.json").
+    /// Absolute paths are accepted only inside the audit directory.
     pub output_path: String,
+    /// Replace the file if it already exists (default: false)
+    #[serde(default)]
+    pub overwrite: bool,
 }
 
 /// Input for init_model tool
@@ -345,7 +351,11 @@ impl MentalModelServer {
             model_path,
             model: Arc::new(RwLock::new(model)),
             findings_store: Arc::new(Mutex::new(findings_store)),
-            artifact_store: Arc::new(ArtifactStore::with_audit_dir(project_path, audit_dir)),
+            artifact_store: Arc::new(ArtifactStore::with_audit_dir(
+                project_path,
+                audit_dir.clone(),
+            )),
+            audit_dir,
             dirty: Arc::new(AtomicBool::new(false)), // ADR-0006
             tool_router: Self::tool_router(),
         })
@@ -1184,13 +1194,18 @@ impl MentalModelServer {
             rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
         })?;
 
-        let count = store.export_json(&input.output_path).map_err(|e| {
+        let target =
+            crate::utils::resolve_output_path(&self.audit_dir, &input.output_path, input.overwrite)
+                .map_err(|e| artifact_error("Cannot export findings", e))?;
+
+        let count = store.export_json(&target).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Failed to export findings: {}", e), None)
         })?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Exported {} findings to '{}'",
-            count, input.output_path
+            count,
+            target.display()
         ))]))
     }
 }
