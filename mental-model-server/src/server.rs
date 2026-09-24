@@ -263,6 +263,18 @@ pub struct GetArtifactOutput {
     pub producer: String,
 }
 
+/// Map artifact store errors: bad input and missing artifacts are the
+/// caller's to fix (invalid_params); anything else is an internal error.
+fn artifact_error(context: &str, e: std::io::Error) -> rmcp::ErrorData {
+    let message = format!("{}: {}", context, e);
+    match e.kind() {
+        std::io::ErrorKind::InvalidInput | std::io::ErrorKind::NotFound => {
+            rmcp::ErrorData::invalid_params(message, None)
+        }
+        _ => rmcp::ErrorData::internal_error(message, None),
+    }
+}
+
 #[tool_router]
 impl MentalModelServer {
     /// Create a new MentalModelServer
@@ -704,12 +716,10 @@ impl MentalModelServer {
                 rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None)
             })?;
 
-        let (available, missing) =
-            self.artifact_store
-                .get_commit_artifacts(&commit)
-                .map_err(|e| {
-                    rmcp::ErrorData::internal_error(format!("Failed to get artifacts: {}", e), None)
-                })?;
+        let (available, missing) = self
+            .artifact_store
+            .get_commit_artifacts(&commit)
+            .map_err(|e| artifact_error("Failed to get artifacts", e))?;
 
         let output = GetCommitArtifactsOutput {
             commit,
@@ -754,9 +764,7 @@ impl MentalModelServer {
                 input.data.as_bytes(),
                 &metadata,
             )
-            .map_err(|e| {
-                rmcp::ErrorData::internal_error(format!("Failed to store artifact: {}", e), None)
-            })?;
+            .map_err(|e| artifact_error("Failed to store artifact", e))?;
 
         let output = StoreArtifactOutput {
             stored_at,
@@ -791,9 +799,7 @@ impl MentalModelServer {
         let (data, info) = self
             .artifact_store
             .get_artifact(&commit, &input.artifact_type)
-            .map_err(|e| {
-                rmcp::ErrorData::internal_error(format!("Artifact not found: {}", e), None)
-            })?;
+            .map_err(|e| artifact_error("Artifact not found", e))?;
 
         let data_str = String::from_utf8(data).unwrap_or_else(|e| {
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, e.into_bytes())

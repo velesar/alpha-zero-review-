@@ -121,6 +121,39 @@ impl DataAcquisition {
         self.project_path.join(".audit").join("artifacts")
     }
 
+    /// Directory for a caller-supplied commit, rejecting names that are not
+    /// a single safe path component and directories that resolve (e.g. via a
+    /// symlink) outside the artifacts directory.
+    fn commit_dir(&self, commit: &str) -> Result<PathBuf, std::io::Error> {
+        let valid = !commit.is_empty()
+            && commit.len() <= 64
+            && commit != "."
+            && commit != ".."
+            && commit
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+        if !valid {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid commit '{}': expected 1-64 characters from [A-Za-z0-9._-]",
+                    commit
+                ),
+            ));
+        }
+        let dir = self.artifacts_dir().join(commit);
+        if dir.exists() {
+            let root = self.artifacts_dir().canonicalize()?;
+            if !dir.canonicalize()?.starts_with(&root) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("{} resolves outside the artifacts directory", dir.display()),
+                ));
+            }
+        }
+        Ok(dir)
+    }
+
     /// Resolve commit reference to actual hash
     pub fn resolve_commit(&self, commit: &str) -> Result<String, std::io::Error> {
         if commit == "HEAD" || commit == "latest" {
@@ -150,7 +183,9 @@ impl DataAcquisition {
 
     /// Check if artifact exists for commit
     pub fn artifact_exists(&self, commit: &str, artifact_type: &str) -> bool {
-        let commit_dir = self.artifacts_dir().join(commit);
+        let Ok(commit_dir) = self.commit_dir(commit) else {
+            return false;
+        };
         let ext = match artifact_type {
             "scip" => "scip",
             "coverage" => "json",
@@ -167,7 +202,7 @@ impl DataAcquisition {
         commit: &str,
         artifact_type: &str,
     ) -> Result<(serde_json::Value, ArtifactMeta), std::io::Error> {
-        let commit_dir = self.artifacts_dir().join(commit);
+        let commit_dir = self.commit_dir(commit)?;
         let ext = match artifact_type {
             "scip" => "scip",
             "coverage" => "json",
@@ -406,6 +441,19 @@ pub struct ArtifactMeta {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn test_rejects_traversal_in_commit() {
+        let temp_dir = TempDir::new().unwrap();
+        let outside = temp_dir.path().join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("semgrep.sarif"), "{}").unwrap();
+        let acq = DataAcquisition::new(temp_dir.path().join("project"));
+
+        assert!(!acq.artifact_exists("../../outside", "semgrep"));
+        let err = acq.load_artifact("../../outside", "semgrep").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
 
     #[test]
     fn test_tool_mapping() {
