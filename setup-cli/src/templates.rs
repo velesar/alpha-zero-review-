@@ -24,12 +24,13 @@ pub fn mcp_json(agent_dir: &Path, target_dir: &Path) -> String {
             "sarif-tools": {
                 "command": agent_dir.join("target/release/sarif-tools-server").to_string_lossy(),
                 "args": [
-                    "--mappings-path", agent_dir.join("methodology_kb/taxonomies/rule_mapping.yaml").to_string_lossy()
+                    "--mappings-path", agent_dir.join("methodology_kb/taxonomies/rule_mapping.yaml").to_string_lossy(),
+                    "--allowed-root", target_dir.to_string_lossy()
                 ]
             },
             "codegraph": {
                 "command": agent_dir.join("target/release/codegraph-server").to_string_lossy(),
-                "args": []
+                "args": ["--allowed-root", target_dir.to_string_lossy()]
             }
         }
     });
@@ -103,6 +104,8 @@ pub fn codex_mcp_servers(
                     .join("methodology_kb/taxonomies/rule_mapping.yaml")
                     .to_string_lossy()
                     .to_string(),
+                "--allowed-root".to_string(),
+                target_dir.to_string_lossy().to_string(),
             ],
         },
     );
@@ -114,7 +117,10 @@ pub fn codex_mcp_servers(
                 .join("target/release/codegraph-server")
                 .to_string_lossy()
                 .to_string(),
-            args: vec![],
+            args: vec![
+                "--allowed-root".to_string(),
+                target_dir.to_string_lossy().to_string(),
+            ],
         },
     );
 
@@ -144,13 +150,14 @@ pub fn cline_mcp_settings(agent_dir: &Path, target_dir: &Path) -> String {
             "sarif-tools": {
                 "command": agent_dir.join("target/release/sarif-tools-server").to_string_lossy(),
                 "args": [
-                    "--mappings-path", agent_dir.join("methodology_kb/taxonomies/rule_mapping.yaml").to_string_lossy()
+                    "--mappings-path", agent_dir.join("methodology_kb/taxonomies/rule_mapping.yaml").to_string_lossy(),
+                    "--allowed-root", target_dir.to_string_lossy()
                 ],
                 "disabled": false
             },
             "codegraph": {
                 "command": agent_dir.join("target/release/codegraph-server").to_string_lossy(),
-                "args": [],
+                "args": ["--allowed-root", target_dir.to_string_lossy()],
                 "disabled": false
             }
         }

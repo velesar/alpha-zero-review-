@@ -35,6 +35,8 @@ use std::path::PathBuf;
 pub struct SarifToolsServer {
     registry: ToolRegistry,
     mappings_path: Option<PathBuf>,
+    /// Directories caller-supplied paths must stay within
+    allowed_roots: Vec<PathBuf>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -125,25 +127,36 @@ pub struct ListToolsOutput {
 #[tool_router]
 impl SarifToolsServer {
     pub fn new(mappings_path: Option<PathBuf>) -> Self {
+        Self::with_allowed_roots(mappings_path, crate::utils::default_allowed_roots())
+    }
+
+    /// Create a server that only accepts caller paths under `allowed_roots`
+    pub fn with_allowed_roots(mappings_path: Option<PathBuf>, allowed_roots: Vec<PathBuf>) -> Self {
         Self {
             registry: ToolRegistry::new(),
             mappings_path,
+            allowed_roots,
             tool_router: Self::tool_router(),
         }
     }
 
+    fn resolve_path(&self, path: &str) -> Result<PathBuf, rmcp::ErrorData> {
+        crate::utils::resolve_within(&self.allowed_roots, std::path::Path::new(path))
+            .map_err(|e| rmcp::ErrorData::invalid_params(e, None))
+    }
+
     /// Run a code analysis tool and get SARIF output
     #[tool(
-        description = "Run a code analysis tool (semgrep, bandit, ruff, trivy) on a path and get SARIF output"
+        description = "Run a code analysis tool (semgrep, bandit, ruff, trivy, clippy) on a path inside the allowed roots and get SARIF output. clippy compiles the project (build scripts and proc macros run), so it requires config {\"allow_code_execution\": true}; only use that for trusted code or in a sandbox."
     )]
     async fn run_tool(
         &self,
         input: Parameters<RunToolInput>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let path = PathBuf::from(&input.path);
+        let path = self.resolve_path(&input.path)?;
 
-        tracing::info!("Running {} on {}", input.tool, input.path);
+        tracing::info!("Running {} on {}", input.tool, path.display());
 
         // Adapter: Convert JSON config to domain type
         let tool_config = input.config.as_ref().map(json_to_tool_config);
@@ -209,10 +222,12 @@ impl SarifToolsServer {
         let sarif = parse_sarif_json(input.sarif)?;
 
         // Adapter: Load rule mappings to domain type
-        let mappings_path = input
-            .rule_mappings
-            .map(PathBuf::from)
-            .or_else(|| self.mappings_path.clone());
+        // A caller-supplied mappings file must be under the allowed roots;
+        // the server's configured default is trusted.
+        let mappings_path = match input.rule_mappings {
+            Some(path) => Some(self.resolve_path(&path)?),
+            None => self.mappings_path.clone(),
+        };
 
         let mappings = if let Some(path) = mappings_path {
             load_rule_mappings(&path)?

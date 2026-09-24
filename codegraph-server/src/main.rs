@@ -17,6 +17,11 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[command(version = "0.1.0")]
 #[command(about = "MCP Server for SCIP-based semantic code intelligence")]
 struct Args {
+    /// Directory that index/project paths may point into
+    /// (repeatable; default: current directory)
+    #[arg(long = "allowed-root")]
+    allowed_roots: Vec<std::path::PathBuf>,
+
     /// Enable debug logging
     #[arg(long, short)]
     debug: bool,
@@ -39,7 +44,13 @@ async fn main() -> Result<()> {
     tracing::info!("Starting Codegraph MCP Server");
 
     // Create the server
-    let server = server::CodegraphServer::new();
+    let allowed_roots = if args.allowed_roots.is_empty() {
+        codegraph_server::utils::default_allowed_roots()
+    } else {
+        args.allowed_roots
+    };
+    tracing::info!("Allowed roots: {:?}", allowed_roots);
+    let server = server::CodegraphServer::with_allowed_roots(allowed_roots);
 
     // Run with stdio transport
     let service = server.serve(rmcp::transport::stdio()).await?;

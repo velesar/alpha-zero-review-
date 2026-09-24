@@ -31,6 +31,8 @@ pub struct CodegraphServer {
     graph: Arc<RwLock<Option<Codegraph>>>,
     /// Project path for index management
     project_path: Arc<RwLock<Option<PathBuf>>>,
+    /// Directories caller-supplied paths must stay within
+    allowed_roots: Arc<Vec<PathBuf>>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -42,6 +44,10 @@ pub struct LoadProjectIndexesInput {
     /// Build missing indexes on-demand if indexer is available (default: false)
     #[serde(default)]
     pub build_if_missing: bool,
+    /// Required with build_if_missing: indexers such as rust-analyzer and
+    /// scip-java run the project's build scripts / build tool
+    #[serde(default)]
+    pub allow_code_execution: bool,
 }
 
 /// Input for load_index
@@ -131,9 +137,15 @@ pub struct CallerInfo {
 #[tool_router]
 impl CodegraphServer {
     pub fn new() -> Self {
+        Self::with_allowed_roots(crate::utils::default_allowed_roots())
+    }
+
+    /// Create a server that only accepts caller paths under `allowed_roots`
+    pub fn with_allowed_roots(allowed_roots: Vec<PathBuf>) -> Self {
         Self {
             graph: Arc::new(RwLock::new(None)),
             project_path: Arc::new(RwLock::new(None)),
+            allowed_roots: Arc::new(allowed_roots),
             tool_router: Self::tool_router(),
         }
     }
@@ -145,13 +157,9 @@ impl CodegraphServer {
     /// - Is within the project directory or .audit/indexes/ directory
     /// - Does not traverse outside allowed directories
     fn validate_index_path(&self, path: &std::path::Path) -> Result<PathBuf, rmcp::ErrorData> {
-        // Canonicalize to resolve symlinks and relative paths
-        let canonical = path.canonicalize().map_err(|e| {
-            rmcp::ErrorData::invalid_params(
-                format!("Cannot resolve path {}: {}", path.display(), e),
-                None,
-            )
-        })?;
+        // Canonicalize (resolving symlinks and `..`) and require an allowed root
+        let canonical = crate::utils::resolve_within(&self.allowed_roots, path)
+            .map_err(|e| rmcp::ErrorData::invalid_params(e, None))?;
 
         // Check if we have a project path set
         if let Ok(project_guard) = self.project_path.read() {
@@ -255,21 +263,32 @@ impl CodegraphServer {
 
     /// Load all project indexes from .audit/indexes/
     #[tool(
-        description = "Auto-load all SCIP indexes from .audit/indexes/ directory. Optionally builds missing indexes if indexer is available."
+        description = "Auto-load all SCIP indexes from .audit/indexes/ in a project under the allowed roots. build_if_missing builds absent indexes and requires allow_code_execution: true, because indexers run project build scripts."
     )]
     async fn load_project_indexes(
         &self,
         input: Parameters<LoadProjectIndexesInput>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let project_path = PathBuf::from(&input.project_path);
+        if input.build_if_missing && !input.allow_code_execution {
+            return Err(rmcp::ErrorData::invalid_params(
+                "build_if_missing runs indexers that execute code from the project \
+                 (build scripts, build tools); pass allow_code_execution: true only for \
+                 trusted code or inside a sandbox"
+                    .to_string(),
+                None,
+            ));
+        }
 
-        if !project_path.exists() {
+        let requested = PathBuf::from(&input.project_path);
+        if !requested.exists() {
             return Err(rmcp::ErrorData::invalid_params(
                 format!("Project path not found: {}", input.project_path),
                 None,
             ));
         }
+        let project_path = crate::utils::resolve_within(&self.allowed_roots, &requested)
+            .map_err(|e| rmcp::ErrorData::invalid_params(e, None))?;
 
         // Store project path for future reference
         *self

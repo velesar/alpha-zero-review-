@@ -63,7 +63,7 @@ struct Args {
     #[arg(long)]
     skip_check: bool,
 
-    /// Build SCIP indexes for detected languages
+    /// Build SCIP indexes for detected languages (runs the project's build scripts)
     #[arg(long)]
     with_index: bool,
 
@@ -138,6 +138,13 @@ fn main() -> Result<()> {
 
     // Build SCIP indexes if requested
     let built_indexes = if args.with_index {
+        println!();
+        println!(
+            "⚠  --with-index runs indexers that execute code from {} \
+             (build scripts, proc macros, build tools). Only index trusted code \
+             or run inside a sandbox.",
+            target_dir.display()
+        );
         build_indexes(&target_dir, args.install_indexers)?
     } else {
         vec![]

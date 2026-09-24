@@ -7,7 +7,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::io::{Error, ErrorKind};
+use std::path::{Path, PathBuf};
 
 /// Metadata for stored artifacts
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +67,29 @@ const ARTIFACT_TYPES: &[&str] = &[
     "complexity",
 ];
 
+/// Validate a caller-supplied name used as a single path component
+/// (commit reference or artifact type): no separators, no `.`/`..`.
+fn validate_component(value: &str, what: &str) -> Result<(), Error> {
+    let valid = !value.is_empty()
+        && value.len() <= 64
+        && value != "."
+        && value != ".."
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if valid {
+        Ok(())
+    } else {
+        Err(Error::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "Invalid {} '{}': expected 1-64 characters from [A-Za-z0-9._-]",
+                what, value
+            ),
+        ))
+    }
+}
+
 impl ArtifactStore {
     /// Create a new artifact store
     pub fn new(base_path: PathBuf) -> Self {
@@ -89,6 +113,48 @@ impl ArtifactStore {
     /// Get the directory for a specific commit
     fn commit_dir(&self, commit: &str) -> PathBuf {
         self.artifacts_dir().join(commit)
+    }
+
+    /// Fail unless an existing path resolves inside the artifacts directory.
+    /// Guards against symlinks (e.g. committed by the audited repository)
+    /// that point elsewhere.
+    fn ensure_contained(&self, path: &Path) -> Result<(), Error> {
+        if !path.exists() && !path.is_symlink() {
+            return Ok(());
+        }
+        let root = self.artifacts_dir().canonicalize()?;
+        let resolved = path.canonicalize().map_err(|_| {
+            Error::new(
+                ErrorKind::InvalidInput,
+                format!("{} is a dangling link", path.display()),
+            )
+        })?;
+        if resolved.starts_with(&root) {
+            Ok(())
+        } else {
+            Err(Error::new(
+                ErrorKind::InvalidInput,
+                format!(
+                    "{} resolves outside the artifacts directory",
+                    path.display()
+                ),
+            ))
+        }
+    }
+
+    /// Resolve and validate a commit reference, returning the commit name
+    fn checked_commit(&self, commit: &str) -> Result<String, Error> {
+        validate_component(commit, "commit")?;
+        let resolved = self.resolve_commit(commit)?;
+        validate_component(&resolved, "commit")?;
+        if resolved == "latest" {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "Cannot resolve 'latest': no artifacts stored yet",
+            ));
+        }
+        self.ensure_contained(&self.commit_dir(&resolved))?;
+        Ok(resolved)
     }
 
     /// Get the metadata file path for a commit
@@ -132,7 +198,7 @@ impl ArtifactStore {
         &self,
         commit: &str,
     ) -> Result<(Vec<AvailableArtifact>, Vec<String>), std::io::Error> {
-        let commit = self.resolve_commit(commit)?;
+        let commit = self.checked_commit(commit)?;
         let meta_path = self.meta_path(&commit);
 
         if !meta_path.exists() {
@@ -183,19 +249,24 @@ impl ArtifactStore {
         data: &[u8],
         metadata: &StoreArtifactMetadata,
     ) -> Result<String, std::io::Error> {
-        let commit = self.resolve_commit(commit)?;
+        validate_component(artifact_type, "artifact type")?;
+        fs::create_dir_all(self.artifacts_dir())?;
+        let commit = self.checked_commit(commit)?;
         let commit_dir = self.commit_dir(&commit);
         fs::create_dir_all(&commit_dir)?;
+        self.ensure_contained(&commit_dir)?;
 
         // Determine file extension based on artifact type
         let ext = Self::get_extension(artifact_type);
         let artifact_path = commit_dir.join(format!("{}.{}", artifact_type, ext));
+        let meta_path = self.meta_path(&commit);
+        self.ensure_contained(&artifact_path)?;
+        self.ensure_contained(&meta_path)?;
 
         // Write the artifact data
         fs::write(&artifact_path, data)?;
 
         // Update metadata
-        let meta_path = self.meta_path(&commit);
         let mut meta = if meta_path.exists() {
             let content = fs::read_to_string(&meta_path)?;
             serde_yaml::from_str(&content).unwrap_or_else(|_| ArtifactMetadata {
@@ -238,8 +309,10 @@ impl ArtifactStore {
         commit: &str,
         artifact_type: &str,
     ) -> Result<(Vec<u8>, ArtifactInfo), std::io::Error> {
-        let commit = self.resolve_commit(commit)?;
+        validate_component(artifact_type, "artifact type")?;
+        let commit = self.checked_commit(commit)?;
         let meta_path = self.meta_path(&commit);
+        self.ensure_contained(&meta_path)?;
 
         if !meta_path.exists() {
             return Err(std::io::Error::new(
@@ -264,6 +337,7 @@ impl ArtifactStore {
             .commit_dir(&commit)
             .join(format!("{}.{}", artifact_type, ext));
 
+        self.ensure_contained(&artifact_path)?;
         let data = fs::read(&artifact_path)?;
 
         Ok((data, info.clone()))
@@ -319,6 +393,66 @@ impl ArtifactStore {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn test_rejects_traversal_in_commit_and_type() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = ArtifactStore::new(temp_dir.path().to_path_buf());
+        let meta = StoreArtifactMetadata {
+            producer: "test".to_string(),
+            produced_at: None,
+        };
+
+        for commit in ["../../escape", "a/b", "..", "", "abc\\def"] {
+            let err = store
+                .store_artifact(commit, "semgrep", b"{}", &meta)
+                .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "commit {:?}", commit);
+            assert!(store.get_artifact(commit, "semgrep").is_err());
+            assert!(store.get_commit_artifacts(commit).is_err());
+        }
+        for artifact_type in ["../x", "a/b", ".."] {
+            let err = store
+                .store_artifact("abc123", artifact_type, b"{}", &meta)
+                .unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        }
+        assert!(!temp_dir.path().join("escape").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_rejects_symlink_out_of_artifacts_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let store = ArtifactStore::new(temp_dir.path().to_path_buf());
+        fs::create_dir_all(store.artifacts_dir()).unwrap();
+        std::os::unix::fs::symlink(outside.path(), store.artifacts_dir().join("abc123")).unwrap();
+
+        let meta = StoreArtifactMetadata {
+            producer: "test".to_string(),
+            produced_at: None,
+        };
+        let err = store
+            .store_artifact("abc123", "semgrep", b"{}", &meta)
+            .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+        assert!(fs::read_dir(outside.path()).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn test_accepts_custom_artifact_types() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = ArtifactStore::new(temp_dir.path().to_path_buf());
+        let meta = StoreArtifactMetadata {
+            producer: "test".to_string(),
+            produced_at: None,
+        };
+        store
+            .store_artifact("abc123", "clippy", b"{}", &meta)
+            .unwrap();
+        assert!(store.get_artifact("abc123", "clippy").is_ok());
+    }
 
     #[test]
     fn test_artifact_store_creation() {

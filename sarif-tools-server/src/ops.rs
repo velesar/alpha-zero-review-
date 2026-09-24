@@ -7,7 +7,7 @@
 //! framework dependencies like serde_json in function signatures.
 //! Serialization/deserialization happens at adapter boundaries.
 
-use crate::domain::{RuleMappings, ToolConfig};
+use crate::domain::{ConfigValue, RuleMappings, ToolConfig};
 use crate::error::ToolError;
 use crate::sarif::Sarif;
 use crate::tools::{ToolInfo, ToolRegistry};
@@ -82,6 +82,13 @@ pub fn execute_tool(
 
     if !runner.is_available() {
         return Err(ToolError::ToolNotInstalled(tool_name.to_string()));
+    }
+
+    let code_execution_allowed = config
+        .and_then(|c| c.options.get("allow_code_execution"))
+        .is_some_and(|v| matches!(v, ConfigValue::Bool(true)));
+    if runner.executes_target_code() && !code_execution_allowed {
+        return Err(ToolError::CodeExecutionNotAllowed(tool_name.to_string()));
     }
 
     if !path.exists() {
@@ -193,6 +200,25 @@ pub fn list_available_tools(registry: &ToolRegistry) -> (Vec<ToolInfo>, usize) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_code_executing_tool_requires_opt_in() {
+        let registry = ToolRegistry::new();
+        let dir = tempfile::TempDir::new().unwrap();
+
+        // cargo is available wherever these tests run
+        let err = execute_tool(&registry, "clippy", dir.path(), None).unwrap_err();
+        assert!(
+            matches!(err, ToolError::CodeExecutionNotAllowed(_)),
+            "{err}"
+        );
+
+        let mut cfg = ToolConfig::default();
+        cfg.options
+            .insert("allow_code_execution".to_string(), ConfigValue::Bool(false));
+        let err = execute_tool(&registry, "clippy", dir.path(), Some(&cfg)).unwrap_err();
+        assert!(matches!(err, ToolError::CodeExecutionNotAllowed(_)));
+    }
+
     use super::*;
     use crate::domain::RuleMapping;
 
