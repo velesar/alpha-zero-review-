@@ -64,6 +64,13 @@ Manages the central mental model artifact and commit-indexed artifact storage.
 | `add_finding` | Add finding with context enrichment |
 | `add_findings` | Batch add multiple findings ⚡ |
 | `get_findings` | Get all findings |
+| `get_findings_by_file` | Findings for a file path |
+| `get_findings_by_severity` | Findings at a severity level |
+| `get_findings_by_viewpoint` | Findings produced by a viewpoint |
+| `get_findings_by_category` | Findings in a category |
+| `get_findings_summary` | Counts by severity, category and viewpoint |
+| `export_findings` | Export all findings (JSON) |
+| `get_completed_viewpoints` | List viewpoints already recorded in the model |
 | `synthesize` | Cluster findings into root causes |
 | `store_artifact` | Store SARIF/SCIP artifact for commit |
 | `get_artifact` | Retrieve stored artifact |
@@ -86,6 +93,13 @@ Knowledge base for metrics, thresholds, and standards.
 | `list_metrics` | List available metrics |
 | `list_standards` | List architecture standards |
 | `get_category` | Get category details |
+| `get_metric_data` | Metric data for a commit from cached artifacts, or which tool to run |
+| `get_acquisition_status` | Which metrics have data for a commit |
+| `list_acquirable_metrics` | Metrics that can be acquired by running tools |
+
+`classify_finding` context accepts `bounded_context_type`, `layer`, `is_hotspot`,
+`file_path`, `business_context` (tags such as `payment`, `auth`) and `caller_count`,
+matching the rule types in `methodology_kb/taxonomies/severity_adjustment.yaml`.
 
 ### sarif-tools-server
 Runs code analysis tools with SARIF output.
@@ -97,6 +111,7 @@ Runs code analysis tools with SARIF output.
 | `get_tool_config` | Get tool configuration |
 | `merge_sarif` | Merge multiple SARIF results |
 | `normalize_sarif` | Enrich SARIF with categories and severity |
+| `install_tool` | Install a missing analysis tool (platform-aware) |
 
 ### codegraph-server
 SCIP-based semantic code intelligence.
@@ -104,13 +119,14 @@ SCIP-based semantic code intelligence.
 | Tool | Description |
 |------|-------------|
 | `load_index` | Load SCIP index or JSON codegraph |
+| `load_project_indexes` | Load (and merge) all indexes from `.audit/indexes/` |
 | `find_symbol` | Search symbols by name pattern |
 | `get_symbol_info` | Get detailed symbol information |
 | `get_callers` | Get all references to a symbol |
-| `get_callees` | Get symbols called from within a symbol |
+| `get_callees` | Get symbols referenced within a symbol's body |
 | `get_impact` | Analyze change impact |
 | `get_file_symbols` | Get all symbols in a file |
-| `get_module_deps` | Get module dependencies |
+| `get_module_deps` | Outgoing (`depends_on`) and incoming (`dependents`) deps of a file or directory |
 | `find_hotspot_symbols` | Find heavily-referenced symbols |
 
 ## Viewpoints Framework
