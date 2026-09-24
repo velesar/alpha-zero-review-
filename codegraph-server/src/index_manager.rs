@@ -264,7 +264,19 @@ impl IndexManager {
         let mut missing = vec![];
         let mut warnings = vec![];
 
-        for lang in detected {
+        // Every index present is loaded, even for languages the project-root
+        // markers did not reveal (e.g. code in subdirectories of a monorepo);
+        // building is only attempted for detected languages.
+        let mut languages = detected;
+        let mut extra: Vec<Language> = available
+            .keys()
+            .copied()
+            .filter(|lang| !languages.contains(lang))
+            .collect();
+        extra.sort_by_key(|lang| lang.index_filename());
+        languages.extend(extra);
+
+        for lang in languages {
             if let Some(path) = available.get(&lang) {
                 let is_fresh = self.is_index_fresh(lang);
                 let commit = self.get_index_commit(lang);
@@ -347,6 +359,19 @@ mod tests {
 
         let langs = Language::detect(dir.path());
         assert!(langs.contains(&Language::Rust));
+    }
+
+    #[test]
+    fn test_loads_indexes_for_undetected_languages() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let index_dir = temp.path().join(".audit/indexes");
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::write(index_dir.join("python.scip"), b"").unwrap();
+
+        // No pyproject.toml / setup.py: python is not detected from markers
+        let result = IndexManager::new(temp.path().to_path_buf()).auto_load_or_build(false);
+        assert_eq!(result.loaded.len(), 1);
+        assert_eq!(result.loaded[0].language, Language::Python);
     }
 
     #[test]
