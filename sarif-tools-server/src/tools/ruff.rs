@@ -3,7 +3,10 @@
 //! Runs Ruff Python linter with SARIF output.
 
 use crate::domain::{ConfigValue, ToolConfig};
-use crate::runner::{detect_tool, get_tool_version, parse_sarif_bytes, InstallCommand, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{
+    detect_tool, get_tool_version, parse_sarif_bytes, InstallCommand, RunnerError, ToolResult,
+    ToolRunner,
+};
 use crate::sarif::Sarif;
 use std::path::Path;
 use std::process::Command;
@@ -44,9 +47,9 @@ impl ToolRunner for RuffRunner {
 
         let mut cmd = Command::new("ruff");
         cmd.arg("check")
-           .arg("--output-format")
-           .arg("sarif")
-           .arg(path);
+            .arg("--output-format")
+            .arg("sarif")
+            .arg(path);
 
         // Apply configuration
         if let Some(cfg) = config {
@@ -72,7 +75,8 @@ impl ToolRunner for RuffRunner {
 
             // Line length from options
             if let Some(ConfigValue::Number(line_length)) = cfg.options.get("line_length") {
-                cmd.arg("--line-length").arg((*line_length as u64).to_string());
+                cmd.arg("--line-length")
+                    .arg((*line_length as u64).to_string());
             }
 
             // Target version from options

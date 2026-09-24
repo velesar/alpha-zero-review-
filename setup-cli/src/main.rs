@@ -33,13 +33,15 @@ impl std::fmt::Display for CliTool {
 #[command(name = "setup-audit")]
 #[command(version = "2.0")]
 #[command(about = "Setup AI Code Audit Agent for a target project")]
-#[command(long_about = "Configures MCP servers and instructions for Claude CLI, Codex CLI, or Cline.\n\n\
+#[command(
+    long_about = "Configures MCP servers and instructions for Claude CLI, Codex CLI, or Cline.\n\n\
     Examples:\n  \
     setup-audit /path/to/project                    # Default (Claude)\n  \
     setup-audit /path/to/project --cli codex        # Codex CLI\n  \
     setup-audit /path/to/project --all              # All tools\n  \
     setup-audit /path/to/project --with-index       # Build SCIP indexes\n  \
-    setup-audit /path/to/project --install-indexers # Install missing indexers")]
+    setup-audit /path/to/project --install-indexers # Install missing indexers"
+)]
 struct Args {
     /// Target project directory (default: current directory)
     #[arg(default_value = ".")]
@@ -300,7 +302,10 @@ fn print_completion(
         println!("║                                                                ║");
         println!("║  SCIP indexes:                                                 ║");
         for (lang, _path) in indexes {
-            println!("║    • .audit/indexes/{:<12}                            ║", lang.index_filename());
+            println!(
+                "║    • .audit/indexes/{:<12}                            ║",
+                lang.index_filename()
+            );
         }
     }
 

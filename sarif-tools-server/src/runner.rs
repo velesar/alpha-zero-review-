@@ -231,26 +231,16 @@ pub fn detect_tool(name: &str) -> bool {
 
 /// Get the version of a tool
 pub fn get_tool_version(name: &str) -> Option<String> {
-    let output = Command::new(name)
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = Command::new(name).arg("--version").output().ok()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     // Try stdout first, then stderr (some tools output version to stderr)
-    let version_str = if !stdout.is_empty() {
-        stdout
-    } else {
-        stderr
-    };
+    let version_str = if !stdout.is_empty() { stdout } else { stderr };
 
     // Extract first line, clean up
-    version_str
-        .lines()
-        .next()
-        .map(|s| s.trim().to_string())
+    version_str.lines().next().map(|s| s.trim().to_string())
 }
 
 /// Parse SARIF from JSON string

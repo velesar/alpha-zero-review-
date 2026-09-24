@@ -293,10 +293,7 @@ impl Codegraph {
         let file = symbol.file.clone();
 
         self.symbols.insert(id.clone(), symbol);
-        self.file_symbols
-            .entry(file)
-            .or_default()
-            .push(id);
+        self.file_symbols.entry(file).or_default().push(id);
     }
 
     /// Add a reference

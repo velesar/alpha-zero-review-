@@ -140,18 +140,12 @@ mod tests {
 
     #[test]
     fn test_detect_index_format_scip() {
-        assert_eq!(
-            detect_index_format(Path::new("index.scip")),
-            Some("scip")
-        );
+        assert_eq!(detect_index_format(Path::new("index.scip")), Some("scip"));
     }
 
     #[test]
     fn test_detect_index_format_json() {
-        assert_eq!(
-            detect_index_format(Path::new("graph.json")),
-            Some("json")
-        );
+        assert_eq!(detect_index_format(Path::new("graph.json")), Some("json"));
     }
 
     #[test]

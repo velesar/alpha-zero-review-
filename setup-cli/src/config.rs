@@ -43,8 +43,7 @@ pub fn setup_audit_dir(target_dir: &Path) -> Result<()> {
     println!("Setting up audit directory...");
 
     let audit_dir = target_dir.join(".audit/artifacts");
-    fs::create_dir_all(&audit_dir)
-        .context("Failed to create .audit/artifacts directory")?;
+    fs::create_dir_all(&audit_dir).context("Failed to create .audit/artifacts directory")?;
 
     println!("  ✓ Created .audit/");
     Ok(())
@@ -66,8 +65,7 @@ fn configure_claude(agent_dir: &Path, target_dir: &Path) -> Result<()> {
     // Generate MCP config
     let mcp_config = templates::mcp_json(agent_dir, target_dir);
     let mcp_path = target_dir.join(".mcp.json");
-    fs::write(&mcp_path, mcp_config)
-        .context("Failed to write .mcp.json")?;
+    fs::write(&mcp_path, mcp_config).context("Failed to write .mcp.json")?;
     println!("  ✓ Created .mcp.json");
 
     // Copy CLAUDE.md from agent directory
@@ -75,14 +73,12 @@ fn configure_claude(agent_dir: &Path, target_dir: &Path) -> Result<()> {
     let claude_md_dst = target_dir.join("CLAUDE.md");
 
     if claude_md_src.exists() {
-        fs::copy(&claude_md_src, &claude_md_dst)
-            .context("Failed to copy CLAUDE.md")?;
+        fs::copy(&claude_md_src, &claude_md_dst).context("Failed to copy CLAUDE.md")?;
         println!("  ✓ Copied CLAUDE.md");
     } else {
         // Generate default CLAUDE.md
         let content = templates::claude_md();
-        fs::write(&claude_md_dst, content)
-            .context("Failed to write CLAUDE.md")?;
+        fs::write(&claude_md_dst, content).context("Failed to write CLAUDE.md")?;
         println!("  ✓ Created CLAUDE.md");
     }
 
@@ -179,17 +175,15 @@ fn configure_codex(agent_dir: &Path, target_dir: &Path) -> Result<()> {
     }
 
     // Write merged config back
-    let config_str = toml::to_string_pretty(&config)
-        .context("Failed to serialize config to TOML")?;
-    fs::write(&config_path, config_str)
-        .context("Failed to write ~/.codex/config.toml")?;
+    let config_str =
+        toml::to_string_pretty(&config).context("Failed to serialize config to TOML")?;
+    fs::write(&config_path, config_str).context("Failed to write ~/.codex/config.toml")?;
     println!("  ✓ Updated ~/.codex/config.toml (merged 4 MCP servers)");
 
     // Create AGENTS.md in target directory
     let agents_md = templates::agents_md();
     let agents_path = target_dir.join("AGENTS.md");
-    fs::write(&agents_path, agents_md)
-        .context("Failed to write AGENTS.md")?;
+    fs::write(&agents_path, agents_md).context("Failed to write AGENTS.md")?;
     println!("  ✓ Created AGENTS.md");
 
     Ok(())
@@ -201,21 +195,18 @@ fn configure_cline(agent_dir: &Path, target_dir: &Path) -> Result<()> {
 
     // Create .cline directory
     let cline_dir = target_dir.join(".cline");
-    fs::create_dir_all(&cline_dir)
-        .context("Failed to create .cline directory")?;
+    fs::create_dir_all(&cline_dir).context("Failed to create .cline directory")?;
 
     // Generate MCP settings
     let mcp_settings = templates::cline_mcp_settings(agent_dir, target_dir);
     let settings_path = cline_dir.join("mcp_settings.json");
-    fs::write(&settings_path, mcp_settings)
-        .context("Failed to write mcp_settings.json")?;
+    fs::write(&settings_path, mcp_settings).context("Failed to write mcp_settings.json")?;
     println!("  ✓ Created .cline/mcp_settings.json");
 
     // Create .clinerules
     let clinerules = templates::clinerules();
     let rules_path = target_dir.join(".clinerules");
-    fs::write(&rules_path, clinerules)
-        .context("Failed to write .clinerules")?;
+    fs::write(&rules_path, clinerules).context("Failed to write .clinerules")?;
     println!("  ✓ Created .clinerules");
 
     Ok(())
@@ -228,8 +219,7 @@ pub fn create_viewpoints_reference(agent_dir: &Path, target_dir: &Path) -> Resul
 
     let content = templates::viewpoints_reference(agent_dir);
     let path = target_dir.join(".audit-viewpoints.md");
-    fs::write(&path, content)
-        .context("Failed to write .audit-viewpoints.md")?;
+    fs::write(&path, content).context("Failed to write .audit-viewpoints.md")?;
     println!("  ✓ Created .audit-viewpoints.md");
 
     Ok(())

@@ -42,16 +42,25 @@ pub struct CodexMcpServer {
 }
 
 /// Generate MCP server configs for Codex CLI (to be merged into ~/.codex/config.toml)
-pub fn codex_mcp_servers(agent_dir: &Path, target_dir: &Path) -> std::collections::HashMap<String, CodexMcpServer> {
+pub fn codex_mcp_servers(
+    agent_dir: &Path,
+    target_dir: &Path,
+) -> std::collections::HashMap<String, CodexMcpServer> {
     let mut servers = std::collections::HashMap::new();
 
     servers.insert(
         "mental-model".to_string(),
         CodexMcpServer {
-            command: agent_dir.join("target/release/mental-model-server").to_string_lossy().to_string(),
+            command: agent_dir
+                .join("target/release/mental-model-server")
+                .to_string_lossy()
+                .to_string(),
             args: vec![
                 "--model-path".to_string(),
-                target_dir.join(".audit/mental_model.yaml").to_string_lossy().to_string(),
+                target_dir
+                    .join(".audit/mental_model.yaml")
+                    .to_string_lossy()
+                    .to_string(),
             ],
         },
     );
@@ -59,10 +68,16 @@ pub fn codex_mcp_servers(agent_dir: &Path, target_dir: &Path) -> std::collection
     servers.insert(
         "methodology-kb".to_string(),
         CodexMcpServer {
-            command: agent_dir.join("target/release/methodology-kb-server").to_string_lossy().to_string(),
+            command: agent_dir
+                .join("target/release/methodology-kb-server")
+                .to_string_lossy()
+                .to_string(),
             args: vec![
                 "--kb-path".to_string(),
-                agent_dir.join("methodology_kb/").to_string_lossy().to_string(),
+                agent_dir
+                    .join("methodology_kb/")
+                    .to_string_lossy()
+                    .to_string(),
             ],
         },
     );
@@ -70,7 +85,10 @@ pub fn codex_mcp_servers(agent_dir: &Path, target_dir: &Path) -> std::collection
     servers.insert(
         "sarif-tools".to_string(),
         CodexMcpServer {
-            command: agent_dir.join("target/release/sarif-tools-server").to_string_lossy().to_string(),
+            command: agent_dir
+                .join("target/release/sarif-tools-server")
+                .to_string_lossy()
+                .to_string(),
             args: vec![],
         },
     );
@@ -78,7 +96,10 @@ pub fn codex_mcp_servers(agent_dir: &Path, target_dir: &Path) -> std::collection
     servers.insert(
         "codegraph".to_string(),
         CodexMcpServer {
-            command: agent_dir.join("target/release/codegraph-server").to_string_lossy().to_string(),
+            command: agent_dir
+                .join("target/release/codegraph-server")
+                .to_string_lossy()
+                .to_string(),
             args: vec![],
         },
     );

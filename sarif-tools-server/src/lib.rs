@@ -6,8 +6,8 @@
 pub mod domain;
 pub mod error;
 pub mod ops;
-pub mod sarif;
 pub mod runner;
+pub mod sarif;
 pub mod server;
 pub mod tools;
 pub mod utils;

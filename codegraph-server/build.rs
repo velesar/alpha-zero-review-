@@ -28,6 +28,9 @@ fn main() {
             }
         }
     } else {
-        println!("cargo:warning=SCIP proto not found at {}. Using simplified types.", proto_path);
+        println!(
+            "cargo:warning=SCIP proto not found at {}. Using simplified types.",
+            proto_path
+        );
     }
 }

@@ -4,11 +4,11 @@
 //! including initialization, viewpoint updates, finding enrichment,
 //! and artifact storage.
 
-use mental_model_server::model::{
-    derive_constraints, BoundedContext, BoundedContextType,
-    Hotspot, Layer, MentalModel, Risk, Severity,
-};
 use mental_model_server::artifacts::{ArtifactStore, StoreArtifactMetadata};
+use mental_model_server::model::{
+    derive_constraints, BoundedContext, BoundedContextType, Hotspot, Layer, MentalModel, Risk,
+    Severity,
+};
 use tempfile::TempDir;
 
 #[test]
@@ -155,12 +155,20 @@ fn test_derive_constraints() {
     let constraints = derive_constraints(&model);
 
     // Check high priority paths
-    assert!(constraints.high_priority_paths.contains(&"src/core".to_string()));
-    assert!(constraints.high_priority_paths.contains(&"src/auth/login.rs".to_string()));
+    assert!(constraints
+        .high_priority_paths
+        .contains(&"src/core".to_string()));
+    assert!(constraints
+        .high_priority_paths
+        .contains(&"src/auth/login.rs".to_string()));
 
     // Check security focus paths
-    assert!(constraints.security_focus_paths.contains(&"src/domain".to_string()));
-    assert!(constraints.security_focus_paths.contains(&"src/api".to_string()));
+    assert!(constraints
+        .security_focus_paths
+        .contains(&"src/domain".to_string()));
+    assert!(constraints
+        .security_focus_paths
+        .contains(&"src/api".to_string()));
 }
 
 #[test]
@@ -191,7 +199,9 @@ fn test_artifact_store_roundtrip() {
         produced_at: None,
     };
 
-    let path = store.store_artifact("abc123", "semgrep", sarif_data, &metadata).unwrap();
+    let path = store
+        .store_artifact("abc123", "semgrep", sarif_data, &metadata)
+        .unwrap();
     assert!(path.contains("abc123"));
     assert!(path.contains("semgrep.sarif"));
 
@@ -217,8 +227,12 @@ fn test_artifact_store_commit_artifacts() {
         produced_at: None,
     };
 
-    store.store_artifact("xyz789", "bandit", b"test1", &metadata).unwrap();
-    store.store_artifact("xyz789", "ruff", b"test2", &metadata).unwrap();
+    store
+        .store_artifact("xyz789", "bandit", b"test1", &metadata)
+        .unwrap();
+    store
+        .store_artifact("xyz789", "ruff", b"test2", &metadata)
+        .unwrap();
 
     // Check available artifacts
     let (available, missing) = store.get_commit_artifacts("xyz789").unwrap();
@@ -234,20 +248,35 @@ fn test_multiple_viewpoint_updates() {
     let mut model = MentalModel::new("test".to_string(), "/test".to_string());
 
     // Apply multiple viewpoints
-    model.apply_viewpoint("VP-F01", serde_json::json!({
-        "primary_language": "python",
-        "confidence": "high"
-    })).unwrap();
+    model
+        .apply_viewpoint(
+            "VP-F01",
+            serde_json::json!({
+                "primary_language": "python",
+                "confidence": "high"
+            }),
+        )
+        .unwrap();
 
-    model.apply_viewpoint("VP-F02", serde_json::json!({
-        "source_roots": ["src"],
-        "test_roots": ["tests"]
-    })).unwrap();
+    model
+        .apply_viewpoint(
+            "VP-F02",
+            serde_json::json!({
+                "source_roots": ["src"],
+                "test_roots": ["tests"]
+            }),
+        )
+        .unwrap();
 
-    model.apply_viewpoint("VP-F03", serde_json::json!({
-        "build_tool": "cargo",
-        "package_manager": "cargo"
-    })).unwrap();
+    model
+        .apply_viewpoint(
+            "VP-F03",
+            serde_json::json!({
+                "build_tool": "cargo",
+                "package_manager": "cargo"
+            }),
+        )
+        .unwrap();
 
     assert_eq!(model.completed_viewpoints.len(), 3);
     assert!(model.completed_viewpoints.contains(&"VP-F01".to_string()));

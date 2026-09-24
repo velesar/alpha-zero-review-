@@ -3,7 +3,9 @@
 //! Runs Bandit Python security analysis with SARIF output.
 
 use crate::domain::{ConfigValue, ToolConfig};
-use crate::runner::{detect_tool, get_tool_version, parse_sarif, InstallCommand, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{
+    detect_tool, get_tool_version, parse_sarif, InstallCommand, RunnerError, ToolResult, ToolRunner,
+};
 use crate::sarif::Sarif;
 use std::path::Path;
 use std::process::Command;
@@ -47,11 +49,11 @@ impl ToolRunner for BanditRunner {
 
         let mut cmd = Command::new("bandit");
         cmd.arg("-r")
-           .arg(path)
-           .arg("-f")
-           .arg("sarif")
-           .arg("-o")
-           .arg(output_file.path());
+            .arg(path)
+            .arg("-f")
+            .arg("sarif")
+            .arg("-o")
+            .arg(output_file.path());
 
         // Apply configuration
         if let Some(cfg) = config {

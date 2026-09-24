@@ -54,8 +54,15 @@ pub struct ArtifactStore {
 
 /// Known artifact types
 const ARTIFACT_TYPES: &[&str] = &[
-    "semgrep", "bandit", "ruff", "trivy", "eslint",
-    "scip", "coverage", "combined", "complexity",
+    "semgrep",
+    "bandit",
+    "ruff",
+    "trivy",
+    "eslint",
+    "scip",
+    "coverage",
+    "combined",
+    "complexity",
 ];
 
 impl ArtifactStore {
@@ -136,7 +143,9 @@ impl ArtifactStore {
         for artifact_type in ARTIFACT_TYPES {
             if let Some(info) = meta.artifacts.get(*artifact_type) {
                 let ext = Self::get_extension(artifact_type);
-                let artifact_path = self.commit_dir(&commit).join(format!("{}.{}", artifact_type, ext));
+                let artifact_path = self
+                    .commit_dir(&commit)
+                    .join(format!("{}.{}", artifact_type, ext));
 
                 if artifact_path.exists() {
                     available.push(AvailableArtifact {
@@ -241,7 +250,9 @@ impl ArtifactStore {
         })?;
 
         let ext = Self::get_extension(artifact_type);
-        let artifact_path = self.commit_dir(&commit).join(format!("{}.{}", artifact_type, ext));
+        let artifact_path = self
+            .commit_dir(&commit)
+            .join(format!("{}.{}", artifact_type, ext));
 
         let data = fs::read(&artifact_path)?;
 
@@ -340,7 +351,9 @@ mod tests {
             producer: "test".to_string(),
             produced_at: None,
         };
-        store.store_artifact("def456", "bandit", b"test", &metadata).unwrap();
+        store
+            .store_artifact("def456", "bandit", b"test", &metadata)
+            .unwrap();
 
         // Now we have one artifact
         let (available, missing) = store.get_commit_artifacts("def456").unwrap();

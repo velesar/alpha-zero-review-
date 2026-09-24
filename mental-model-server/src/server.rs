@@ -7,17 +7,23 @@ use crate::artifacts::{ArtifactStore, AvailableArtifact, StoreArtifactMetadata};
 use crate::findings_store::FindingsStore;
 use crate::model::{derive_constraints, Finding, FindingContext, MentalModel, RootCause, Severity};
 use anyhow::Result;
-use std::future::Future;
 use rmcp::{
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo, PaginatedRequestParam, ListToolsResult, ErrorData, CallToolRequestParam},
-    schemars, tool,
-    handler::server::{tool::{ToolRouter, Parameters, ToolCallContext}, ServerHandler},
-    tool_router,
+    handler::server::{
+        tool::{Parameters, ToolCallContext, ToolRouter},
+        ServerHandler,
+    },
+    model::{
+        CallToolRequestParam, CallToolResult, Content, ErrorData, ListToolsResult,
+        PaginatedRequestParam, ServerCapabilities, ServerInfo,
+    },
+    schemars,
     service::{RequestContext, RoleServer},
+    tool, tool_router,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -27,9 +33,9 @@ use uuid::Uuid;
 pub struct MentalModelServer {
     model_path: PathBuf,
     model: Arc<RwLock<MentalModel>>,
-    findings_store: Arc<Mutex<FindingsStore>>,  // ADR-0007: separate findings storage
+    findings_store: Arc<Mutex<FindingsStore>>, // ADR-0007: separate findings storage
     artifact_store: Arc<ArtifactStore>,
-    dirty: Arc<AtomicBool>,  // ADR-0006: tracks unsaved changes
+    dirty: Arc<AtomicBool>, // ADR-0006: tracks unsaved changes
     tool_router: ToolRouter<Self>,
 }
 
@@ -269,17 +275,23 @@ impl MentalModelServer {
     pub fn new(model_path: PathBuf) -> Result<Self> {
         let model = if model_path.exists() {
             match fs::read_to_string(&model_path) {
-                Ok(content) => {
-                    match serde_yaml::from_str(&content) {
-                        Ok(m) => m,
-                        Err(e) => {
-                            tracing::warn!("Failed to parse model file {}: {}, using default", model_path.display(), e);
-                            MentalModel::default()
-                        }
+                Ok(content) => match serde_yaml::from_str(&content) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to parse model file {}: {}, using default",
+                            model_path.display(),
+                            e
+                        );
+                        MentalModel::default()
                     }
-                }
+                },
                 Err(e) => {
-                    tracing::warn!("Failed to read model file {}: {}, using default", model_path.display(), e);
+                    tracing::warn!(
+                        "Failed to read model file {}: {}, using default",
+                        model_path.display(),
+                        e
+                    );
                     MentalModel::default()
                 }
             }
@@ -296,21 +308,29 @@ impl MentalModelServer {
 
         // ADR-0007: Create findings store in .audit directory
         let findings_db_path = project_path.join(".audit").join("findings.db");
-        let findings_store = FindingsStore::new(&findings_db_path)
-            .map_err(|e| anyhow::anyhow!("Failed to create findings store at {}: {}", findings_db_path.display(), e))?;
+        let findings_store = FindingsStore::new(&findings_db_path).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to create findings store at {}: {}",
+                findings_db_path.display(),
+                e
+            )
+        })?;
 
         Ok(Self {
             model_path,
             model: Arc::new(RwLock::new(model)),
             findings_store: Arc::new(Mutex::new(findings_store)),
             artifact_store: Arc::new(ArtifactStore::new(project_path)),
-            dirty: Arc::new(AtomicBool::new(false)),  // ADR-0006
+            dirty: Arc::new(AtomicBool::new(false)), // ADR-0006
             tool_router: Self::tool_router(),
         })
     }
 
     fn save_model(&self) -> Result<()> {
-        let model = self.model.read().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+        let model = self
+            .model
+            .read()
+            .map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
         let yaml = serde_yaml::to_string(&*model)?;
         fs::write(&self.model_path, yaml)?;
         Ok(())
@@ -334,27 +354,32 @@ impl MentalModelServer {
     }
 
     /// Check if there are unsaved changes
-    #[allow(dead_code)]  // Useful for testing
+    #[allow(dead_code)] // Useful for testing
     fn is_dirty(&self) -> bool {
         self.dirty.load(Ordering::SeqCst)
     }
 
     /// Initialize a new mental model for a project
-    #[tool(description = "Initialize a new mental model for a project. Call this before starting an audit.")]
-    async fn init_model(&self, input: Parameters<InitModelInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Initialize a new mental model for a project. Call this before starting an audit."
+    )]
+    async fn init_model(
+        &self,
+        input: Parameters<InitModelInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let mut model = self.model.write().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let mut model = self
+            .model
+            .write()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
         *model = MentalModel::new(input.name, input.path);
         model.project.description = input.description;
         model.project.repository = input.repository;
 
         drop(model);
-        self.save_model().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Save error: {}", e), None)
-        })?;
+        self.save_model()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Save error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(
             "Mental model initialized successfully",
@@ -362,11 +387,14 @@ impl MentalModelServer {
     }
 
     /// Get the current mental model state
-    #[tool(description = "Get the current mental model state as YAML. Returns the complete model including all viewpoint data, constraints, and findings.")]
+    #[tool(
+        description = "Get the current mental model state as YAML. Returns the complete model including all viewpoint data, constraints, and findings."
+    )]
     async fn get_model(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        let model = self.model.read().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let model = self
+            .model
+            .read()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
         let yaml = serde_yaml::to_string(&*model).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
@@ -376,16 +404,24 @@ impl MentalModelServer {
     }
 
     /// Update the mental model with viewpoint results
-    #[tool(description = "Update the mental model with results from a viewpoint analysis. This will also recalculate derived constraints.")]
-    async fn update_viewpoint(&self, input: Parameters<UpdateViewpointInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Update the mental model with results from a viewpoint analysis. This will also recalculate derived constraints."
+    )]
+    async fn update_viewpoint(
+        &self,
+        input: Parameters<UpdateViewpointInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let mut model = self.model.write().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let mut model = self
+            .model
+            .write()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
-        model.apply_viewpoint(&input.viewpoint, input.data).map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Apply viewpoint error: {}", e), None)
-        })?;
+        model
+            .apply_viewpoint(&input.viewpoint, input.data)
+            .map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Apply viewpoint error: {}", e), None)
+            })?;
 
         // Recalculate constraints
         model.constraints = derive_constraints(&model);
@@ -397,9 +433,8 @@ impl MentalModelServer {
         drop(model);
         // ADR-0006: Phase boundary - flush all pending changes
         self.mark_dirty();
-        self.flush_if_dirty().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None)
-        })?;
+        self.flush_if_dirty()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None))?;
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Viewpoint {} applied successfully.\n\nUpdated constraints:\n{}",
@@ -408,12 +443,18 @@ impl MentalModelServer {
     }
 
     /// Get business context for a file path
-    #[tool(description = "Get business context for a specific file path. Returns bounded context type, architecture layer, and hotspot status.")]
-    async fn get_context(&self, input: Parameters<GetContextInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get business context for a specific file path. Returns bounded context type, architecture layer, and hotspot status."
+    )]
+    async fn get_context(
+        &self,
+        input: Parameters<GetContextInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let model = self.model.read().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let model = self
+            .model
+            .read()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
         let context = model.get_context_for_path(&input.file_path);
 
@@ -425,11 +466,14 @@ impl MentalModelServer {
     }
 
     /// Get derived analysis constraints
-    #[tool(description = "Get the derived analysis constraints. These are automatically calculated paths that should receive priority attention based on the mental model.")]
+    #[tool(
+        description = "Get the derived analysis constraints. These are automatically calculated paths that should receive priority attention based on the mental model."
+    )]
     async fn get_constraints(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        let model = self.model.read().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let model = self
+            .model
+            .read()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
         let json = serde_json::to_string_pretty(&model.constraints).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
@@ -439,12 +483,18 @@ impl MentalModelServer {
     }
 
     /// Add a finding with automatic context enrichment
-    #[tool(description = "Add a finding from quality analysis. The finding will be automatically enriched with context from the mental model and severity will be adjusted.")]
-    async fn add_finding(&self, input: Parameters<AddFindingInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Add a finding from quality analysis. The finding will be automatically enriched with context from the mental model and severity will be adjusted."
+    )]
+    async fn add_finding(
+        &self,
+        input: Parameters<AddFindingInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let mut model = self.model.write().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let mut model = self
+            .model
+            .write()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
         // Parse base severity
         let base_severity = match input.base_severity.to_uppercase().as_str() {
@@ -529,8 +579,13 @@ impl MentalModelServer {
     }
 
     /// Synthesize findings into root causes
-    #[tool(description = "Cluster findings into root causes. This analyzes patterns across findings to identify underlying issues.")]
-    async fn synthesize(&self, input: Parameters<SynthesizeInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Cluster findings into root causes. This analyzes patterns across findings to identify underlying issues."
+    )]
+    async fn synthesize(
+        &self,
+        input: Parameters<SynthesizeInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         // ADR-0007: Get findings from SQLite store
@@ -550,17 +605,17 @@ impl MentalModelServer {
         };
 
         // Store root causes in model
-        let mut model = self.model.write().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let mut model = self
+            .model
+            .write()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
         model.root_causes = root_causes.clone();
 
         drop(model);
         // ADR-0006: End of audit - flush all pending changes
         self.mark_dirty();
-        self.flush_if_dirty().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None)
-        })?;
+        self.flush_if_dirty()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None))?;
 
         let json = serde_json::to_string_pretty(&root_causes).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
@@ -577,9 +632,10 @@ impl MentalModelServer {
     /// Get completed viewpoints
     #[tool(description = "Get list of viewpoints that have been completed.")]
     async fn get_completed_viewpoints(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        let model = self.model.read().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let model = self
+            .model
+            .read()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
         let json = serde_json::to_string_pretty(&model.completed_viewpoints).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
@@ -589,15 +645,28 @@ impl MentalModelServer {
     }
 
     /// Get available and missing artifacts for a commit
-    #[tool(description = "List available and missing artifacts for a specific commit. Use 'HEAD' or 'latest' for current commit.")]
-    async fn get_commit_artifacts(&self, input: Parameters<GetCommitArtifactsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "List available and missing artifacts for a specific commit. Use 'HEAD' or 'latest' for current commit."
+    )]
+    async fn get_commit_artifacts(
+        &self,
+        input: Parameters<GetCommitArtifactsInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
-        let commit = self.artifact_store.resolve_commit(&input.commit)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None))?;
+        let commit = self
+            .artifact_store
+            .resolve_commit(&input.commit)
+            .map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None)
+            })?;
 
-        let (available, missing) = self.artifact_store.get_commit_artifacts(&commit)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to get artifacts: {}", e), None))?;
+        let (available, missing) =
+            self.artifact_store
+                .get_commit_artifacts(&commit)
+                .map_err(|e| {
+                    rmcp::ErrorData::internal_error(format!("Failed to get artifacts: {}", e), None)
+                })?;
 
         let output = GetCommitArtifactsOutput {
             commit,
@@ -605,31 +674,46 @@ impl MentalModelServer {
             missing,
         };
 
-        let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
+        let json = serde_json::to_string_pretty(&output).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Store an artifact for a commit
-    #[tool(description = "Store a tool output artifact (SARIF, SCIP, coverage) for a specific commit. Data should be JSON for SARIF or base64 for binary.")]
-    async fn store_artifact(&self, input: Parameters<StoreArtifactInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Store a tool output artifact (SARIF, SCIP, coverage) for a specific commit. Data should be JSON for SARIF or base64 for binary."
+    )]
+    async fn store_artifact(
+        &self,
+        input: Parameters<StoreArtifactInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
-        let commit = self.artifact_store.resolve_commit(&input.commit)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None))?;
+        let commit = self
+            .artifact_store
+            .resolve_commit(&input.commit)
+            .map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None)
+            })?;
 
         let metadata = StoreArtifactMetadata {
             producer: input.producer,
             produced_at: None,
         };
 
-        let stored_at = self.artifact_store.store_artifact(
-            &commit,
-            &input.artifact_type,
-            input.data.as_bytes(),
-            &metadata,
-        ).map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to store artifact: {}", e), None))?;
+        let stored_at = self
+            .artifact_store
+            .store_artifact(
+                &commit,
+                &input.artifact_type,
+                input.data.as_bytes(),
+                &metadata,
+            )
+            .map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Failed to store artifact: {}", e), None)
+            })?;
 
         let output = StoreArtifactOutput {
             stored_at,
@@ -637,25 +721,40 @@ impl MentalModelServer {
             artifact_type: input.artifact_type,
         };
 
-        let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
+        let json = serde_json::to_string_pretty(&output).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
 
     /// Retrieve an artifact for a commit
-    #[tool(description = "Retrieve a stored artifact by commit and type. Returns the artifact data along with metadata.")]
-    async fn get_artifact(&self, input: Parameters<GetArtifactInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Retrieve a stored artifact by commit and type. Returns the artifact data along with metadata."
+    )]
+    async fn get_artifact(
+        &self,
+        input: Parameters<GetArtifactInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
-        let commit = self.artifact_store.resolve_commit(&input.commit)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None))?;
+        let commit = self
+            .artifact_store
+            .resolve_commit(&input.commit)
+            .map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Failed to resolve commit: {}", e), None)
+            })?;
 
-        let (data, info) = self.artifact_store.get_artifact(&commit, &input.artifact_type)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Artifact not found: {}", e), None))?;
+        let (data, info) = self
+            .artifact_store
+            .get_artifact(&commit, &input.artifact_type)
+            .map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Artifact not found: {}", e), None)
+            })?;
 
-        let data_str = String::from_utf8(data)
-            .unwrap_or_else(|e| base64::Engine::encode(&base64::engine::general_purpose::STANDARD, e.into_bytes()));
+        let data_str = String::from_utf8(data).unwrap_or_else(|e| {
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, e.into_bytes())
+        });
 
         let output = GetArtifactOutput {
             data: data_str,
@@ -665,8 +764,9 @@ impl MentalModelServer {
             producer: info.producer,
         };
 
-        let json = serde_json::to_string_pretty(&output)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None))?;
+        let json = serde_json::to_string_pretty(&output).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
+        })?;
 
         Ok(CallToolResult::success(vec![Content::text(json)]))
     }
@@ -674,12 +774,18 @@ impl MentalModelServer {
     // ========== Batch Operations (ADR-0005) ==========
 
     /// Add multiple findings in a single operation
-    #[tool(description = "Add multiple findings from quality analysis in a single batch operation. Each finding will be automatically enriched with context and severity adjusted. More efficient than multiple add_finding calls. (ADR-0005)")]
-    async fn add_findings(&self, input: Parameters<AddFindingsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Add multiple findings from quality analysis in a single batch operation. Each finding will be automatically enriched with context and severity adjusted. More efficient than multiple add_finding calls. (ADR-0005)"
+    )]
+    async fn add_findings(
+        &self,
+        input: Parameters<AddFindingsInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let mut model = self.model.write().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let mut model = self
+            .model
+            .write()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
         let mut added_findings = Vec::new();
         let mut viewpoints_touched = std::collections::HashSet::new();
@@ -753,12 +859,18 @@ impl MentalModelServer {
     }
 
     /// Get context for multiple file paths in a single operation
-    #[tool(description = "Get business context for multiple file paths in a single batch operation. Returns a map of file paths to their context (bounded context type, architecture layer, hotspot status). More efficient than multiple get_context calls. (ADR-0005)")]
-    async fn get_contexts(&self, input: Parameters<GetContextsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get business context for multiple file paths in a single batch operation. Returns a map of file paths to their context (bounded context type, architecture layer, hotspot status). More efficient than multiple get_context calls. (ADR-0005)"
+    )]
+    async fn get_contexts(
+        &self,
+        input: Parameters<GetContextsInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
-        let model = self.model.read().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let model = self
+            .model
+            .read()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
         let mut contexts: HashMap<String, FindingContext> = HashMap::new();
 
@@ -775,8 +887,13 @@ impl MentalModelServer {
     }
 
     /// Get a specific section of the mental model
-    #[tool(description = "Get a specific section of the mental model instead of the full model. Sections: project, tech_stack, structure, build_deploy, module_hierarchy, architecture, domain_model, entity_model, interface_surface, hotspots, constraints, findings, root_causes, completed_viewpoints. More efficient than get_model when only one section is needed. (ADR-0005)")]
-    async fn get_model_section(&self, input: Parameters<GetModelSectionInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get a specific section of the mental model instead of the full model. Sections: project, tech_stack, structure, build_deploy, module_hierarchy, architecture, domain_model, entity_model, interface_surface, hotspots, constraints, findings, root_causes, completed_viewpoints. More efficient than get_model when only one section is needed. (ADR-0005)"
+    )]
+    async fn get_model_section(
+        &self,
+        input: Parameters<GetModelSectionInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
         // ADR-0007: Handle findings section separately from FindingsStore
@@ -793,9 +910,10 @@ impl MentalModelServer {
             return Ok(CallToolResult::success(vec![Content::text(json)]));
         }
 
-        let model = self.model.read().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None)
-        })?;
+        let model = self
+            .model
+            .read()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Lock error: {}", e), None))?;
 
         let section_json: serde_json::Value = match input.section.as_str() {
             "project" => serde_json::to_value(&model.project),
@@ -831,11 +949,13 @@ impl MentalModelServer {
     // ========== Deferred Persistence (ADR-0006) ==========
 
     /// Flush pending changes to disk
-    #[tool(description = "Persist any pending changes to disk. Called automatically at phase boundaries (update_viewpoint, synthesize), but can be called explicitly for additional safety. (ADR-0006)")]
+    #[tool(
+        description = "Persist any pending changes to disk. Called automatically at phase boundaries (update_viewpoint, synthesize), but can be called explicitly for additional safety. (ADR-0006)"
+    )]
     async fn flush(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        let flushed = self.flush_if_dirty().map_err(|e| {
-            rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None)
-        })?;
+        let flushed = self
+            .flush_if_dirty()
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("Flush error: {}", e), None))?;
 
         let message = if flushed {
             "Pending changes flushed to disk"
@@ -852,8 +972,13 @@ impl MentalModelServer {
     // ========== Findings Query Tools (ADR-0007) ==========
 
     /// Get findings by file path
-    #[tool(description = "Get findings filtered by file path. Returns all findings for files matching the given path. (ADR-0007)")]
-    async fn get_findings_by_file(&self, input: Parameters<GetFindingsByFileInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get findings filtered by file path. Returns all findings for files matching the given path. (ADR-0007)"
+    )]
+    async fn get_findings_by_file(
+        &self,
+        input: Parameters<GetFindingsByFileInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let store = self.findings_store.lock().map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
@@ -869,13 +994,20 @@ impl MentalModelServer {
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Found {} findings for file path '{}'\n\n{}",
-            findings.len(), input.file_path, json
+            findings.len(),
+            input.file_path,
+            json
         ))]))
     }
 
     /// Get findings by severity level
-    #[tool(description = "Get findings filtered by severity level (critical, high, medium, low, info). (ADR-0007)")]
-    async fn get_findings_by_severity(&self, input: Parameters<GetFindingsBySeverityInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get findings filtered by severity level (critical, high, medium, low, info). (ADR-0007)"
+    )]
+    async fn get_findings_by_severity(
+        &self,
+        input: Parameters<GetFindingsBySeverityInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let severity = match input.severity.to_uppercase().as_str() {
             "CRITICAL" => Severity::Critical,
@@ -885,7 +1017,10 @@ impl MentalModelServer {
             "INFO" => Severity::Info,
             _ => {
                 return Err(rmcp::ErrorData::invalid_params(
-                    format!("Unknown severity: '{}'. Valid values: critical, high, medium, low, info", input.severity),
+                    format!(
+                        "Unknown severity: '{}'. Valid values: critical, high, medium, low, info",
+                        input.severity
+                    ),
                     None,
                 ));
             }
@@ -905,13 +1040,18 @@ impl MentalModelServer {
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Found {} findings with severity {:?}\n\n{}",
-            findings.len(), severity, json
+            findings.len(),
+            severity,
+            json
         ))]))
     }
 
     /// Get findings by viewpoint
     #[tool(description = "Get findings filtered by viewpoint (e.g., VP-Q01, VP-Q02). (ADR-0007)")]
-    async fn get_findings_by_viewpoint(&self, input: Parameters<GetFindingsByViewpointInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    async fn get_findings_by_viewpoint(
+        &self,
+        input: Parameters<GetFindingsByViewpointInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let store = self.findings_store.lock().map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
@@ -927,13 +1067,20 @@ impl MentalModelServer {
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Found {} findings for viewpoint '{}'\n\n{}",
-            findings.len(), input.viewpoint, json
+            findings.len(),
+            input.viewpoint,
+            json
         ))]))
     }
 
     /// Get findings by category
-    #[tool(description = "Get findings filtered by category (security, reliability, maintainability, performance, testability). (ADR-0007)")]
-    async fn get_findings_by_category(&self, input: Parameters<GetFindingsByCategoryInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get findings filtered by category (security, reliability, maintainability, performance, testability). (ADR-0007)"
+    )]
+    async fn get_findings_by_category(
+        &self,
+        input: Parameters<GetFindingsByCategoryInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let store = self.findings_store.lock().map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
@@ -949,12 +1096,16 @@ impl MentalModelServer {
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Found {} findings for category '{}'\n\n{}",
-            findings.len(), input.category, json
+            findings.len(),
+            input.category,
+            json
         ))]))
     }
 
     /// Get findings summary statistics
-    #[tool(description = "Get summary statistics for all findings including counts by severity, category, and viewpoint. (ADR-0007)")]
+    #[tool(
+        description = "Get summary statistics for all findings including counts by severity, category, and viewpoint. (ADR-0007)"
+    )]
     async fn get_findings_summary(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let store = self.findings_store.lock().map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
@@ -972,8 +1123,13 @@ impl MentalModelServer {
     }
 
     /// Export findings to JSON file
-    #[tool(description = "Export all findings to a JSON file. Useful for sharing or external processing. (ADR-0007)")]
-    async fn export_findings(&self, input: Parameters<ExportFindingsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Export all findings to a JSON file. Useful for sharing or external processing. (ADR-0007)"
+    )]
+    async fn export_findings(
+        &self,
+        input: Parameters<ExportFindingsInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let store = self.findings_store.lock().map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Findings store lock error: {}", e), None)
@@ -1089,11 +1245,7 @@ fn synthesize_by_category(findings: &[Finding]) -> Vec<RootCause> {
         // Collect affected areas
         let affected_areas: Vec<String> = findings
             .iter()
-            .filter_map(|f| {
-                f.context
-                    .as_ref()
-                    .and_then(|c| c.bounded_context.clone())
-            })
+            .filter_map(|f| f.context.as_ref().and_then(|c| c.bounded_context.clone()))
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect();

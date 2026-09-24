@@ -10,8 +10,8 @@ use crate::ops;
 use crate::sarif::Sarif;
 use crate::tools::{ToolInfo, ToolRegistry};
 use crate::utils::{
-    format_json_response, format_prefixed_json_response,
-    json_to_tool_config, load_rule_mappings, parse_sarif_values, parse_sarif_json,
+    format_json_response, format_prefixed_json_response, json_to_tool_config, load_rule_mappings,
+    parse_sarif_json, parse_sarif_values,
 };
 use rmcp::{
     handler::server::{
@@ -19,8 +19,8 @@ use rmcp::{
         ServerHandler,
     },
     model::{
-        CallToolRequestParam, CallToolResult, ErrorData, ListToolsResult,
-        PaginatedRequestParam, ServerCapabilities, ServerInfo,
+        CallToolRequestParam, CallToolResult, ErrorData, ListToolsResult, PaginatedRequestParam,
+        ServerCapabilities, ServerInfo,
     },
     schemars,
     service::{RequestContext, RoleServer},
@@ -232,7 +232,9 @@ impl SarifToolsServer {
     }
 
     /// Install a code analysis tool
-    #[tool(description = "Install a code analysis tool (semgrep, bandit, ruff, trivy). Automatically detects available package managers.")]
+    #[tool(
+        description = "Install a code analysis tool (semgrep, bandit, ruff, trivy). Automatically detects available package managers."
+    )]
     async fn install_tool(
         &self,
         input: Parameters<InstallToolInput>,
@@ -287,7 +289,9 @@ impl SarifToolsServer {
             return format_json_response(&InstallToolOutput {
                 success: false,
                 tool: tool_name.clone(),
-                message: "No supported package manager found. Install one of the following manually:".to_string(),
+                message:
+                    "No supported package manager found. Install one of the following manually:"
+                        .to_string(),
                 tried: None,
                 alternatives: all_commands,
             });
@@ -304,7 +308,10 @@ impl SarifToolsServer {
                     format_json_response(&InstallToolOutput {
                         success: true,
                         tool: tool_name.clone(),
-                        message: format!("Successfully installed {} (version: {})", tool_name, version),
+                        message: format!(
+                            "Successfully installed {} (version: {})",
+                            tool_name, version
+                        ),
                         tried: Some(tried_cmd),
                         alternatives: vec![],
                     })

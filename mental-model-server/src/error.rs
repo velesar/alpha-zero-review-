@@ -60,9 +60,7 @@ pub enum SynthesisError {
 impl From<ModelError> for rmcp::ErrorData {
     fn from(e: ModelError) -> Self {
         match e {
-            ModelError::NotInitialized => {
-                rmcp::ErrorData::invalid_request(e.to_string(), None)
-            }
+            ModelError::NotInitialized => rmcp::ErrorData::invalid_request(e.to_string(), None),
             ModelError::AlreadyInitialized(_) => {
                 rmcp::ErrorData::invalid_request(e.to_string(), None)
             }

@@ -3,7 +3,9 @@
 //! Runs cargo clippy and converts JSON output to SARIF format.
 
 use crate::domain::{ConfigValue, ToolConfig};
-use crate::runner::{detect_tool, get_tool_version, InstallCommand, RunnerError, ToolResult, ToolRunner};
+use crate::runner::{
+    detect_tool, get_tool_version, InstallCommand, RunnerError, ToolResult, ToolRunner,
+};
 use crate::sarif::{
     ArtifactLocation, Location, Message, PhysicalLocation, Region, Result as SarifResult, Run,
     Sarif, Tool, ToolDriver,
@@ -191,11 +193,17 @@ impl ClippyRunner {
     }
 
     /// Convert a clippy diagnostic to a SARIF result
-    fn diagnostic_to_sarif(&self, diagnostic: &ClippyDiagnostic, base_path: &Path) -> Option<SarifResult> {
+    fn diagnostic_to_sarif(
+        &self,
+        diagnostic: &ClippyDiagnostic,
+        base_path: &Path,
+    ) -> Option<SarifResult> {
         let msg = &diagnostic.message;
 
         // Get rule ID from code, default to "unknown" if not present
-        let rule_id = msg.code.as_ref()
+        let rule_id = msg
+            .code
+            .as_ref()
             .map(|c| c.code.clone())
             .unwrap_or_else(|| "unknown".to_string());
 

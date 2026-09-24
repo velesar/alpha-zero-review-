@@ -5,7 +5,7 @@
 
 use crate::model::{Finding, FindingContext, Severity};
 use anyhow::Result;
-use rusqlite::{Connection, params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -96,7 +96,9 @@ impl FindingsStore {
 
     /// Add a single finding
     pub fn add(&self, finding: &Finding) -> Result<()> {
-        let context_json = finding.context.as_ref()
+        let context_json = finding
+            .context
+            .as_ref()
             .map(serde_json::to_string)
             .transpose()?;
 
@@ -129,7 +131,9 @@ impl FindingsStore {
         let mut count = 0;
 
         for finding in findings {
-            let context_json = finding.context.as_ref()
+            let context_json = finding
+                .context
+                .as_ref()
                 .map(serde_json::to_string)
                 .transpose()?;
 
@@ -166,7 +170,7 @@ impl FindingsStore {
             "SELECT id, viewpoint, category, title, description, file_path,
              line_number, base_severity, adjusted_severity, rule_id,
              recommendation, context_json
-             FROM findings ORDER BY created_at"
+             FROM findings ORDER BY created_at",
         )?;
 
         self.query_to_findings(&mut stmt, [])
@@ -178,7 +182,7 @@ impl FindingsStore {
             "SELECT id, viewpoint, category, title, description, file_path,
              line_number, base_severity, adjusted_severity, rule_id,
              recommendation, context_json
-             FROM findings WHERE file_path = ?1 ORDER BY created_at"
+             FROM findings WHERE file_path = ?1 ORDER BY created_at",
         )?;
 
         self.query_to_findings(&mut stmt, [file_path])
@@ -190,7 +194,7 @@ impl FindingsStore {
             "SELECT id, viewpoint, category, title, description, file_path,
              line_number, base_severity, adjusted_severity, rule_id,
              recommendation, context_json
-             FROM findings WHERE adjusted_severity = ?1 ORDER BY created_at"
+             FROM findings WHERE adjusted_severity = ?1 ORDER BY created_at",
         )?;
 
         self.query_to_findings(&mut stmt, [severity_to_string(severity)])
@@ -202,7 +206,7 @@ impl FindingsStore {
             "SELECT id, viewpoint, category, title, description, file_path,
              line_number, base_severity, adjusted_severity, rule_id,
              recommendation, context_json
-             FROM findings WHERE viewpoint = ?1 ORDER BY created_at"
+             FROM findings WHERE viewpoint = ?1 ORDER BY created_at",
         )?;
 
         self.query_to_findings(&mut stmt, [viewpoint])
@@ -214,7 +218,7 @@ impl FindingsStore {
             "SELECT id, viewpoint, category, title, description, file_path,
              line_number, base_severity, adjusted_severity, rule_id,
              recommendation, context_json
-             FROM findings WHERE category = ?1 ORDER BY created_at"
+             FROM findings WHERE category = ?1 ORDER BY created_at",
         )?;
 
         self.query_to_findings(&mut stmt, [category])
@@ -222,18 +226,16 @@ impl FindingsStore {
 
     /// Get total finding count
     pub fn count(&self) -> Result<usize> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM findings",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM findings", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 
     /// Get counts grouped by severity
     pub fn counts_by_severity(&self) -> Result<HashMap<String, usize>> {
         let mut stmt = self.conn.prepare(
-            "SELECT adjusted_severity, COUNT(*) FROM findings GROUP BY adjusted_severity"
+            "SELECT adjusted_severity, COUNT(*) FROM findings GROUP BY adjusted_severity",
         )?;
 
         let mut counts = HashMap::new();
@@ -251,9 +253,9 @@ impl FindingsStore {
 
     /// Get counts grouped by category
     pub fn counts_by_category(&self) -> Result<HashMap<String, usize>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT category, COUNT(*) FROM findings GROUP BY category"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT category, COUNT(*) FROM findings GROUP BY category")?;
 
         let mut counts = HashMap::new();
         let rows = stmt.query_map([], |row| {
@@ -270,9 +272,9 @@ impl FindingsStore {
 
     /// Get counts grouped by viewpoint
     pub fn counts_by_viewpoint(&self) -> Result<HashMap<String, usize>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT viewpoint, COUNT(*) FROM findings GROUP BY viewpoint"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT viewpoint, COUNT(*) FROM findings GROUP BY viewpoint")?;
 
         let mut counts = HashMap::new();
         let rows = stmt.query_map([], |row| {
@@ -309,19 +311,19 @@ impl FindingsStore {
             "SELECT id, viewpoint, category, title, description, file_path,
              line_number, base_severity, adjusted_severity, rule_id,
              recommendation, context_json
-             FROM findings WHERE id = ?1"
+             FROM findings WHERE id = ?1",
         )?;
 
-        stmt.query_row([id], |row| {
-            Ok(row_to_finding(row))
-        }).optional()?.transpose()
+        stmt.query_row([id], |row| Ok(row_to_finding(row)))
+            .optional()?
+            .transpose()
     }
 
     /// Get distinct viewpoints that have findings
     pub fn get_viewpoints_with_findings(&self) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT DISTINCT viewpoint FROM findings ORDER BY viewpoint"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT viewpoint FROM findings ORDER BY viewpoint")?;
 
         let rows = stmt.query_map([], |row| row.get(0))?;
         let mut viewpoints = Vec::new();
@@ -416,7 +418,7 @@ impl FindingsStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::BoundedContextType;  // Used in create_test_finding
+    use crate::model::BoundedContextType; // Used in create_test_finding
 
     fn create_test_finding(id: &str, viewpoint: &str, severity: Severity) -> Finding {
         Finding {
@@ -480,9 +482,15 @@ mod tests {
     #[test]
     fn test_get_by_severity() {
         let store = FindingsStore::in_memory().unwrap();
-        store.add(&create_test_finding("F-001", "VP-Q01", Severity::High)).unwrap();
-        store.add(&create_test_finding("F-002", "VP-Q01", Severity::High)).unwrap();
-        store.add(&create_test_finding("F-003", "VP-Q01", Severity::Low)).unwrap();
+        store
+            .add(&create_test_finding("F-001", "VP-Q01", Severity::High))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-002", "VP-Q01", Severity::High))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-003", "VP-Q01", Severity::Low))
+            .unwrap();
 
         let high_findings = store.get_by_severity(&Severity::High).unwrap();
         assert_eq!(high_findings.len(), 2);
@@ -494,9 +502,15 @@ mod tests {
     #[test]
     fn test_get_by_viewpoint() {
         let store = FindingsStore::in_memory().unwrap();
-        store.add(&create_test_finding("F-001", "VP-Q01", Severity::High)).unwrap();
-        store.add(&create_test_finding("F-002", "VP-Q01", Severity::Medium)).unwrap();
-        store.add(&create_test_finding("F-003", "VP-Q02", Severity::Low)).unwrap();
+        store
+            .add(&create_test_finding("F-001", "VP-Q01", Severity::High))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-002", "VP-Q01", Severity::Medium))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-003", "VP-Q02", Severity::Low))
+            .unwrap();
 
         let vp_q01 = store.get_by_viewpoint("VP-Q01").unwrap();
         assert_eq!(vp_q01.len(), 2);
@@ -508,9 +522,15 @@ mod tests {
     #[test]
     fn test_counts_by_severity() {
         let store = FindingsStore::in_memory().unwrap();
-        store.add(&create_test_finding("F-001", "VP-Q01", Severity::High)).unwrap();
-        store.add(&create_test_finding("F-002", "VP-Q01", Severity::High)).unwrap();
-        store.add(&create_test_finding("F-003", "VP-Q01", Severity::Low)).unwrap();
+        store
+            .add(&create_test_finding("F-001", "VP-Q01", Severity::High))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-002", "VP-Q01", Severity::High))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-003", "VP-Q01", Severity::Low))
+            .unwrap();
 
         let counts = store.counts_by_severity().unwrap();
         assert_eq!(counts.get("HIGH"), Some(&2));
@@ -520,8 +540,12 @@ mod tests {
     #[test]
     fn test_get_summary() {
         let store = FindingsStore::in_memory().unwrap();
-        store.add(&create_test_finding("F-001", "VP-Q01", Severity::High)).unwrap();
-        store.add(&create_test_finding("F-002", "VP-Q02", Severity::Medium)).unwrap();
+        store
+            .add(&create_test_finding("F-001", "VP-Q01", Severity::High))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-002", "VP-Q02", Severity::Medium))
+            .unwrap();
 
         let summary = store.get_summary().unwrap();
         assert_eq!(summary.total, 2);
@@ -531,8 +555,12 @@ mod tests {
     #[test]
     fn test_clear() {
         let store = FindingsStore::in_memory().unwrap();
-        store.add(&create_test_finding("F-001", "VP-Q01", Severity::High)).unwrap();
-        store.add(&create_test_finding("F-002", "VP-Q01", Severity::Medium)).unwrap();
+        store
+            .add(&create_test_finding("F-001", "VP-Q01", Severity::High))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-002", "VP-Q01", Severity::Medium))
+            .unwrap();
 
         assert_eq!(store.count().unwrap(), 2);
 
@@ -544,9 +572,15 @@ mod tests {
     #[test]
     fn test_viewpoints_with_findings() {
         let store = FindingsStore::in_memory().unwrap();
-        store.add(&create_test_finding("F-001", "VP-Q01", Severity::High)).unwrap();
-        store.add(&create_test_finding("F-002", "VP-Q02", Severity::Medium)).unwrap();
-        store.add(&create_test_finding("F-003", "VP-Q01", Severity::Low)).unwrap();
+        store
+            .add(&create_test_finding("F-001", "VP-Q01", Severity::High))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-002", "VP-Q02", Severity::Medium))
+            .unwrap();
+        store
+            .add(&create_test_finding("F-003", "VP-Q01", Severity::Low))
+            .unwrap();
 
         let viewpoints = store.get_viewpoints_with_findings().unwrap();
         assert_eq!(viewpoints.len(), 2);

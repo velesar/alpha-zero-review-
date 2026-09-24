@@ -54,7 +54,6 @@ pub enum ProjectType {
     Enterprise,
 }
 
-
 /// Threshold set for a specific project type and language
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ThresholdSet {

@@ -17,7 +17,8 @@ pub struct Sarif {
 }
 
 fn default_schema() -> String {
-    "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json".to_string()
+    "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"
+        .to_string()
 }
 
 fn default_version() -> String {
@@ -74,7 +75,10 @@ pub struct Rule {
     pub full_description: Option<Message>,
     #[serde(rename = "helpUri", skip_serializing_if = "Option::is_none")]
     pub help_uri: Option<String>,
-    #[serde(rename = "defaultConfiguration", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "defaultConfiguration",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub default_configuration: Option<RuleConfiguration>,
     #[serde(default)]
     pub properties: serde_json::Value,
@@ -255,7 +259,10 @@ mod tests {
         run.results.push(Result {
             rule_id: "rule1".to_string(),
             level: Some("warning".to_string()),
-            message: Message { text: "test".to_string(), markdown: None },
+            message: Message {
+                text: "test".to_string(),
+                markdown: None,
+            },
             locations: vec![],
             fingerprints: None,
             properties: serde_json::Value::Null,
@@ -263,7 +270,10 @@ mod tests {
         run.results.push(Result {
             rule_id: "rule2".to_string(),
             level: Some("error".to_string()),
-            message: Message { text: "test2".to_string(), markdown: None },
+            message: Message {
+                text: "test2".to_string(),
+                markdown: None,
+            },
             locations: vec![],
             fingerprints: None,
             properties: serde_json::Value::Null,
@@ -469,7 +479,10 @@ mod tests {
         assert_eq!(result.message.text, "Found an issue");
 
         let location = &result.locations[0];
-        assert_eq!(location.physical_location.artifact_location.uri, "src/test.rs");
+        assert_eq!(
+            location.physical_location.artifact_location.uri,
+            "src/test.rs"
+        );
         let region = location.physical_location.region.as_ref().unwrap();
         assert_eq!(region.start_line, Some(10));
         assert_eq!(region.start_column, Some(5));
@@ -487,10 +500,18 @@ mod tests {
                     rules: vec![Rule {
                         id: "rule1".to_string(),
                         name: Some("Test Rule".to_string()),
-                        short_description: Some(Message { text: "Short".to_string(), markdown: None }),
-                        full_description: Some(Message { text: "Full description".to_string(), markdown: None }),
+                        short_description: Some(Message {
+                            text: "Short".to_string(),
+                            markdown: None,
+                        }),
+                        full_description: Some(Message {
+                            text: "Full description".to_string(),
+                            markdown: None,
+                        }),
                         help_uri: Some("https://example.com/rule1".to_string()),
-                        default_configuration: Some(RuleConfiguration { level: Some("warning".to_string()) }),
+                        default_configuration: Some(RuleConfiguration {
+                            level: Some("warning".to_string()),
+                        }),
                         properties: serde_json::json!({"category": "security"}),
                     }],
                 },
@@ -498,7 +519,10 @@ mod tests {
             results: vec![Result {
                 rule_id: "rule1".to_string(),
                 level: Some("warning".to_string()),
-                message: Message { text: "Test message".to_string(), markdown: Some("**Test**".to_string()) },
+                message: Message {
+                    text: "Test message".to_string(),
+                    markdown: Some("**Test**".to_string()),
+                },
                 locations: vec![Location {
                     physical_location: PhysicalLocation {
                         artifact_location: ArtifactLocation {
@@ -544,7 +568,9 @@ mod tests {
 
     #[test]
     fn test_rule_configuration() {
-        let config = RuleConfiguration { level: Some("error".to_string()) };
+        let config = RuleConfiguration {
+            level: Some("error".to_string()),
+        };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("error"));
 

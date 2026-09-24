@@ -126,15 +126,13 @@ mod tests {
 
     #[test]
     fn test_from_mappings() {
-        let mappings = vec![
-            RuleMapping {
-                tool: "ruff".to_string(),
-                rule_id: "E501".to_string(),
-                category: "style".to_string(),
-                base_severity: Some("LOW".to_string()),
-                description: None,
-            },
-        ];
+        let mappings = vec![RuleMapping {
+            tool: "ruff".to_string(),
+            rule_id: "E501".to_string(),
+            category: "style".to_string(),
+            base_severity: Some("LOW".to_string()),
+            description: None,
+        }];
 
         let index = RuleMappingsIndex::from_mappings(&mappings);
         assert!(!index.is_empty());

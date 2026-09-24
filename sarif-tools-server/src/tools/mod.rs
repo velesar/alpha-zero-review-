@@ -2,17 +2,17 @@
 //!
 //! Implements runners for various code analysis tools.
 
-mod semgrep;
 mod bandit;
-mod ruff;
-mod trivy;
 mod clippy;
+mod ruff;
+mod semgrep;
+mod trivy;
 
-pub use semgrep::SemgrepRunner;
 pub use bandit::BanditRunner;
-pub use ruff::RuffRunner;
-pub use trivy::TrivyRunner;
 pub use clippy::ClippyRunner;
+pub use ruff::RuffRunner;
+pub use semgrep::SemgrepRunner;
+pub use trivy::TrivyRunner;
 
 use crate::runner::ToolRunner;
 use serde::Serialize;

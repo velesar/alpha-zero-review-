@@ -3,12 +3,9 @@
 //! These tests verify the core functionality of the codegraph
 //! including symbol management, reference tracking, and impact analysis.
 
-use codegraph_server::graph::{
-    Codegraph, Range, Reference, ReferenceRole,
-    Symbol, SymbolKind,
-};
-use tempfile::TempDir;
+use codegraph_server::graph::{Codegraph, Range, Reference, ReferenceRole, Symbol, SymbolKind};
 use std::fs;
+use tempfile::TempDir;
 
 #[test]
 fn test_codegraph_creation() {

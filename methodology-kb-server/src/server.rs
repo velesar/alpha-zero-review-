@@ -7,17 +7,23 @@
 use crate::acquisition::{DataAcquisition, DataSource};
 use crate::types::*;
 use anyhow::Result;
-use std::future::Future;
 use rmcp::{
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo, PaginatedRequestParam, ListToolsResult, ErrorData, CallToolRequestParam},
-    schemars, tool,
-    handler::server::{tool::{ToolRouter, Parameters, ToolCallContext}, ServerHandler},
-    tool_router,
+    handler::server::{
+        tool::{Parameters, ToolCallContext, ToolRouter},
+        ServerHandler,
+    },
+    model::{
+        CallToolRequestParam, CallToolResult, Content, ErrorData, ListToolsResult,
+        PaginatedRequestParam, ServerCapabilities, ServerInfo,
+    },
+    schemars,
     service::{RequestContext, RoleServer},
+    tool, tool_router,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -145,7 +151,10 @@ impl MethodologyKBServer {
 
         // Get project path from current directory or parent of kb_path
         let project_path = std::env::current_dir().unwrap_or_else(|_| {
-            kb_path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."))
+            kb_path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| PathBuf::from("."))
         });
 
         Self {
@@ -207,26 +216,36 @@ impl MethodologyKBServer {
         }
 
         // Load report templates
-        for path in glob::glob(&kb_path.join("templates/reports/*.md").to_string_lossy())?.flatten() {
+        for path in glob::glob(&kb_path.join("templates/reports/*.md").to_string_lossy())?.flatten()
+        {
             let content = fs::read_to_string(&path)?;
-            let id = path.file_stem()
+            let id = path
+                .file_stem()
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
-            kb.templates.insert(id.clone(), ReportTemplate {
-                id: id.clone(),
-                name: id.replace('_', " "),
-                format: "markdown".to_string(),
-                content,
-                sections: vec![],
-            });
+            kb.templates.insert(
+                id.clone(),
+                ReportTemplate {
+                    id: id.clone(),
+                    name: id.replace('_', " "),
+                    format: "markdown".to_string(),
+                    content,
+                    sections: vec![],
+                },
+            );
         }
 
         Ok(kb)
     }
 
     /// Look up a metric definition and thresholds
-    #[tool(description = "Look up a metric definition including description, thresholds, and interpretation guidance.")]
-    async fn lookup_metric(&self, input: Parameters<LookupMetricInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Look up a metric definition including description, thresholds, and interpretation guidance."
+    )]
+    async fn lookup_metric(
+        &self,
+        input: Parameters<LookupMetricInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let metric = self.kb.metrics.get(&input.metric).cloned();
 
@@ -245,7 +264,9 @@ impl MethodologyKBServer {
                 for threshold_set in &self.kb.thresholds {
                     if threshold_set.project_type == project_type {
                         if let Some(threshold) = threshold_set.metrics.get(&input.metric) {
-                            metric.thresholds.insert("current".to_string(), threshold.clone());
+                            metric
+                                .thresholds
+                                .insert("current".to_string(), threshold.clone());
                         }
                     }
                 }
@@ -260,14 +281,24 @@ impl MethodologyKBServer {
             Ok(CallToolResult::success(vec![Content::text(format!(
                 "Metric '{}' not found in knowledge base. Available metrics: {}",
                 input.metric,
-                self.kb.metrics.keys().cloned().collect::<Vec<_>>().join(", ")
+                self.kb
+                    .metrics
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ))]))
         }
     }
 
     /// Classify a finding with context-aware severity adjustment
-    #[tool(description = "Classify a finding and calculate adjusted severity based on context (bounded context type, layer, hotspot status).")]
-    async fn classify_finding(&self, input: Parameters<ClassifyFindingInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Classify a finding and calculate adjusted severity based on context (bounded context type, layer, hotspot status)."
+    )]
+    async fn classify_finding(
+        &self,
+        input: Parameters<ClassifyFindingInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let mut category = input.category.clone();
         let mut base_severity = input.base_severity.clone();
@@ -304,7 +335,8 @@ impl MethodologyKBServer {
                         context.bounded_context_type.as_ref() == Some(value)
                     }
                     AdjustmentCondition::LayerType { value } => {
-                        context.layer.as_ref().map(|l| l.to_lowercase()) == Some(value.to_lowercase())
+                        context.layer.as_ref().map(|l| l.to_lowercase())
+                            == Some(value.to_lowercase())
                     }
                     AdjustmentCondition::IsHotspot => context.is_hotspot,
                     AdjustmentCondition::CategoryMatch { category: cat } => {
@@ -360,8 +392,13 @@ impl MethodologyKBServer {
     }
 
     /// Get thresholds for a project type
-    #[tool(description = "Get all metric thresholds for a specific project type and optionally language.")]
-    async fn get_thresholds(&self, input: Parameters<GetThresholdsInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get all metric thresholds for a specific project type and optionally language."
+    )]
+    async fn get_thresholds(
+        &self,
+        input: Parameters<GetThresholdsInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let project_type = match input.project_type.to_lowercase().as_str() {
             "greenfield" => ProjectType::Greenfield,
@@ -391,7 +428,9 @@ impl MethodologyKBServer {
         if result_thresholds.is_empty() {
             // Fall back to default thresholds
             for threshold_set in &self.kb.thresholds {
-                if threshold_set.project_type == ProjectType::Mature && threshold_set.language.is_none() {
+                if threshold_set.project_type == ProjectType::Mature
+                    && threshold_set.language.is_none()
+                {
                     result_thresholds.extend(threshold_set.metrics.clone());
                     break;
                 }
@@ -409,8 +448,13 @@ impl MethodologyKBServer {
     }
 
     /// Check compliance against an architecture standard
-    #[tool(description = "Check if a detected architecture pattern complies with a standard (clean_architecture, layered, hexagonal).")]
-    async fn check_compliance(&self, input: Parameters<CheckComplianceInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Check if a detected architecture pattern complies with a standard (clean_architecture, layered, hexagonal)."
+    )]
+    async fn check_compliance(
+        &self,
+        input: Parameters<CheckComplianceInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let standard = self.kb.standards.get(&input.standard);
 
@@ -419,26 +463,35 @@ impl MethodologyKBServer {
             let mut score: f64 = 100.0;
 
             // Parse detected pattern
-            let detected_layers: Vec<String> = input.detected_pattern
+            let detected_layers: Vec<String> = input
+                .detected_pattern
                 .get("layers")
                 .and_then(|v| v.as_array())
-                .map(|arr| arr.iter()
-                    .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
-                    .map(String::from)
-                    .collect())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.get("name").and_then(|n| n.as_str()))
+                        .map(String::from)
+                        .collect()
+                })
                 .unwrap_or_default();
 
             // Check for required layers
             for required_layer in &standard.layers {
                 let found = detected_layers.iter().any(|l| {
-                    l.to_lowercase() == required_layer.name.to_lowercase() ||
-                    required_layer.aliases.iter().any(|a| a.to_lowercase() == l.to_lowercase())
+                    l.to_lowercase() == required_layer.name.to_lowercase()
+                        || required_layer
+                            .aliases
+                            .iter()
+                            .any(|a| a.to_lowercase() == l.to_lowercase())
                 });
 
                 if !found {
                     violations.push(ComplianceViolation {
                         rule: format!("Required layer: {}", required_layer.name),
-                        description: format!("Missing {} layer. Purpose: {}", required_layer.name, required_layer.purpose),
+                        description: format!(
+                            "Missing {} layer. Purpose: {}",
+                            required_layer.name, required_layer.purpose
+                        ),
                         severity: "MEDIUM".to_string(),
                         location: None,
                     });
@@ -447,16 +500,29 @@ impl MethodologyKBServer {
             }
 
             // Check dependency rules
-            if let Some(detected_violations) = input.detected_pattern.get("violations").and_then(|v| v.as_array()) {
+            if let Some(detected_violations) = input
+                .detected_pattern
+                .get("violations")
+                .and_then(|v| v.as_array())
+            {
                 for violation in detected_violations {
-                    let from = violation.get("from_layer").and_then(|v| v.as_str()).unwrap_or("unknown");
-                    let to = violation.get("to_layer").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let from = violation
+                        .get("from_layer")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let to = violation
+                        .get("to_layer")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
 
                     violations.push(ComplianceViolation {
                         rule: format!("Dependency rule: {} -> {}", from, to),
                         description: format!("Invalid dependency from {} to {}", from, to),
                         severity: "HIGH".to_string(),
-                        location: violation.get("file_path").and_then(|v| v.as_str()).map(String::from),
+                        location: violation
+                            .get("file_path")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
                     });
                     score -= 10.0;
                 }
@@ -470,7 +536,8 @@ impl MethodologyKBServer {
                 recommendations: if score < 70.0 {
                     vec![
                         "Review and enforce layer boundaries".to_string(),
-                        "Consider using dependency injection to invert problematic dependencies".to_string(),
+                        "Consider using dependency injection to invert problematic dependencies"
+                            .to_string(),
                         "Add architectural fitness functions to CI pipeline".to_string(),
                     ]
                 } else {
@@ -487,19 +554,31 @@ impl MethodologyKBServer {
             Ok(CallToolResult::success(vec![Content::text(format!(
                 "Standard '{}' not found. Available standards: {}",
                 input.standard,
-                self.kb.standards.keys().cloned().collect::<Vec<_>>().join(", ")
+                self.kb
+                    .standards
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ))]))
         }
     }
 
     /// Get a report template
-    #[tool(description = "Get a report template for generating audit outputs (executive_summary, root_cause, technical_details).")]
-    async fn get_template(&self, input: Parameters<GetTemplateInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get a report template for generating audit outputs (executive_summary, root_cause, technical_details)."
+    )]
+    async fn get_template(
+        &self,
+        input: Parameters<GetTemplateInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
         let template = self.kb.templates.get(&input.template_type);
 
         if let Some(template) = template {
-            Ok(CallToolResult::success(vec![Content::text(template.content.clone())]))
+            Ok(CallToolResult::success(vec![Content::text(
+                template.content.clone(),
+            )]))
         } else {
             // Return a default template
             let default_template = match input.template_type.as_str() {
@@ -508,7 +587,9 @@ impl MethodologyKBServer {
                 _ => "Template not found",
             };
 
-            Ok(CallToolResult::success(vec![Content::text(default_template)]))
+            Ok(CallToolResult::success(vec![Content::text(
+                default_template,
+            )]))
         }
     }
 
@@ -526,7 +607,10 @@ impl MethodologyKBServer {
     /// List available standards
     #[tool(description = "List all available architecture standards.")]
     async fn list_standards(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        let standards: Vec<(&String, &String)> = self.kb.standards.iter()
+        let standards: Vec<(&String, &String)> = self
+            .kb
+            .standards
+            .iter()
             .map(|(id, s)| (id, &s.name))
             .collect();
         let json = serde_json::to_string_pretty(&standards).map_err(|e| {
@@ -538,7 +622,10 @@ impl MethodologyKBServer {
 
     /// Get category information
     #[tool(description = "Get detailed information about a finding category.")]
-    async fn get_category(&self, input: Parameters<GetCategoryInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    async fn get_category(
+        &self,
+        input: Parameters<GetCategoryInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let category = input.0.category;
         let cat = self.kb.categories.get(&category);
 
@@ -551,7 +638,12 @@ impl MethodologyKBServer {
             Ok(CallToolResult::success(vec![Content::text(format!(
                 "Category '{}' not found. Available categories: {}",
                 category,
-                self.kb.categories.keys().cloned().collect::<Vec<_>>().join(", ")
+                self.kb
+                    .categories
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ))]))
         }
     }
@@ -559,12 +651,21 @@ impl MethodologyKBServer {
     // =========== Data Acquisition Tools ===========
 
     /// Get metric data with automatic cascade
-    #[tool(description = "Get metric data for a commit. Checks artifact cache first, returns data with provenance information. If data unavailable, indicates which tool to run.")]
-    async fn get_metric_data(&self, input: Parameters<GetMetricDataInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get metric data for a commit. Checks artifact cache first, returns data with provenance information. If data unavailable, indicates which tool to run."
+    )]
+    async fn get_metric_data(
+        &self,
+        input: Parameters<GetMetricDataInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
-        let data = self.acquisition.get_metric_data(&input.commit, &input.metric)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Acquisition error: {}", e), None))?;
+        let data = self
+            .acquisition
+            .get_metric_data(&input.commit, &input.metric)
+            .map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Acquisition error: {}", e), None)
+            })?;
 
         let json = serde_json::to_string_pretty(&data).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
@@ -584,12 +685,21 @@ impl MethodologyKBServer {
     }
 
     /// Get acquisition status for a commit
-    #[tool(description = "Get the status of data acquisition for a commit. Shows which metrics are available, which are missing, and which tools need to be run.")]
-    async fn get_acquisition_status(&self, input: Parameters<GetAcquisitionStatusInput>) -> Result<CallToolResult, rmcp::ErrorData> {
+    #[tool(
+        description = "Get the status of data acquisition for a commit. Shows which metrics are available, which are missing, and which tools need to be run."
+    )]
+    async fn get_acquisition_status(
+        &self,
+        input: Parameters<GetAcquisitionStatusInput>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
 
-        let status = self.acquisition.get_acquisition_status(&input.commit)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("Acquisition error: {}", e), None))?;
+        let status = self
+            .acquisition
+            .get_acquisition_status(&input.commit)
+            .map_err(|e| {
+                rmcp::ErrorData::internal_error(format!("Acquisition error: {}", e), None)
+            })?;
 
         let json = serde_json::to_string_pretty(&status).map_err(|e| {
             rmcp::ErrorData::internal_error(format!("Serialization error: {}", e), None)
@@ -606,7 +716,9 @@ impl MethodologyKBServer {
     }
 
     /// List acquirable metrics
-    #[tool(description = "List all metrics that can be acquired through tool execution and caching.")]
+    #[tool(
+        description = "List all metrics that can be acquired through tool execution and caching."
+    )]
     async fn list_acquirable_metrics(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         let metrics = self.acquisition.list_available_metrics();
 
@@ -616,7 +728,8 @@ impl MethodologyKBServer {
 
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Acquirable metrics ({}):\n\n{}",
-            metrics.len(), json
+            metrics.len(),
+            json
         ))]))
     }
 }

@@ -484,7 +484,11 @@ impl MentalModel {
     }
 
     /// Apply viewpoint data to the model
-    pub fn apply_viewpoint(&mut self, viewpoint: &str, data: serde_json::Value) -> anyhow::Result<()> {
+    pub fn apply_viewpoint(
+        &mut self,
+        viewpoint: &str,
+        data: serde_json::Value,
+    ) -> anyhow::Result<()> {
         match viewpoint {
             "VP-F01" => {
                 if let Ok(tech_stack) = serde_json::from_value(data) {
@@ -561,9 +565,10 @@ pub fn derive_constraints(model: &MentalModel) -> Constraints {
     // Hotspots → high priority
     for hotspot in &model.hotspots.files {
         if matches!(hotspot.risk, Risk::Critical | Risk::High)
-            && !high_priority.contains(&hotspot.path) {
-                high_priority.push(hotspot.path.clone());
-            }
+            && !high_priority.contains(&hotspot.path)
+        {
+            high_priority.push(hotspot.path.clone());
+        }
     }
 
     // Domain layer → security focus
@@ -645,8 +650,14 @@ mod tests {
 
         let constraints = derive_constraints(&model);
 
-        assert!(constraints.high_priority_paths.contains(&"src/orders".to_string()));
-        assert!(constraints.high_priority_paths.contains(&"src/auth/handler.rs".to_string()));
-        assert!(constraints.security_focus_paths.contains(&"src/domain".to_string()));
+        assert!(constraints
+            .high_priority_paths
+            .contains(&"src/orders".to_string()));
+        assert!(constraints
+            .high_priority_paths
+            .contains(&"src/auth/handler.rs".to_string()));
+        assert!(constraints
+            .security_focus_paths
+            .contains(&"src/domain".to_string()));
     }
 }
