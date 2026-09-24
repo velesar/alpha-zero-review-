@@ -143,7 +143,7 @@ impl Codegraph {
 
             // Process symbol definitions in this document
             for sym_info in &doc.symbols {
-                let symbol_id = sym_info.symbol.clone();
+                let symbol_id = Self::scoped_symbol_id(&sym_info.symbol, &file_path);
                 if symbol_id.is_empty() {
                     continue;
                 }
@@ -174,7 +174,7 @@ impl Codegraph {
 
             // Process occurrences (references and definitions)
             for occ in &doc.occurrences {
-                let symbol_id = occ.symbol.clone();
+                let symbol_id = Self::scoped_symbol_id(&occ.symbol, &file_path);
                 if symbol_id.is_empty() {
                     continue;
                 }
@@ -278,7 +278,18 @@ impl Codegraph {
 
     /// Whether a SCIP symbol is local to a document (e.g. "local 3")
     fn is_local_symbol(symbol_id: &str) -> bool {
-        symbol_id.starts_with("local ")
+        symbol_id.starts_with("local ") || symbol_id.contains("#local ")
+    }
+
+    /// SCIP `local N` symbols are unique only within one document. Qualify
+    /// them with the document path (`src/a.rs#local 3`) so locals from
+    /// different files are not merged into one symbol.
+    fn scoped_symbol_id(symbol: &str, file_path: &str) -> String {
+        if symbol.starts_with("local ") {
+            format!("{}#{}", file_path, symbol)
+        } else {
+            symbol.to_string()
+        }
     }
 
     /// Whether a SCIP symbol names a function/method (`().`) or type (`#`),
@@ -309,14 +320,25 @@ impl Codegraph {
         // Example: "scip-typescript npm @types/node 18.0.0 path/`join`()."
         // We want to extract the last meaningful part
 
-        symbol_id
+        let name = symbol_id
             .split('/')
             .next_back()
             .and_then(|s| s.split('`').nth(1))
             .or_else(|| symbol_id.split('/').next_back())
             .unwrap_or(symbol_id)
-            .trim_end_matches(['(', ')', '.', '#'])
-            .to_string()
+            .trim_end_matches(['(', ')', '.', '#']);
+
+        if !name.is_empty() {
+            return name.to_string();
+        }
+
+        // Package/crate roots ("<scheme> <manager> <package> <version> crate/")
+        // have an empty last descriptor: name them after the package.
+        symbol_id
+            .split_whitespace()
+            .nth(2)
+            .map(|package| format!("{} (crate)", package))
+            .unwrap_or_else(|| symbol_id.to_string())
     }
 
     /// Convert SCIP SymbolKind to our SymbolKind
@@ -544,6 +566,7 @@ impl Codegraph {
     pub fn find_hotspots(&self, min_callers: usize, path_filter: Option<&str>) -> Vec<Hotspot> {
         self.symbols
             .values()
+            .filter(|s| !Self::is_local_symbol(&s.id))
             .filter(|s| {
                 if let Some(filter) = path_filter {
                     s.file.contains(filter)
@@ -649,6 +672,18 @@ mod tests {
         graph.add_symbol(symbol);
         assert_eq!(graph.symbols_count(), 1);
         assert!(graph.get_symbol("test#func").is_some());
+    }
+
+    #[test]
+    fn test_extract_symbol_name() {
+        assert_eq!(
+            Codegraph::extract_symbol_name("rust-analyzer cargo foo 0.1.0 graph/Codegraph#"),
+            "Codegraph"
+        );
+        assert_eq!(
+            Codegraph::extract_symbol_name("rust-analyzer cargo sarif-tools-server 0.1.0 crate/"),
+            "sarif-tools-server (crate)"
+        );
     }
 
     #[test]
