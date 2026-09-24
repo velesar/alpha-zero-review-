@@ -57,6 +57,13 @@ pub trait ToolRunner: Send + Sync {
     /// Returns multiple options for cross-platform support
     fn install_commands(&self) -> Vec<InstallCommand>;
 
+    /// Whether running the tool executes code from the analyzed project
+    /// (build scripts, proc macros, build plugins). Such tools only run when
+    /// the caller passes `allow_code_execution: true`.
+    fn executes_target_code(&self) -> bool {
+        false
+    }
+
     /// Run the tool on a path
     fn run(&self, path: &Path, config: Option<&ToolConfig>) -> Result<ToolResult, RunnerError>;
 }

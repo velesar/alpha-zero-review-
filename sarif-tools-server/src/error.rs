@@ -16,6 +16,12 @@ pub enum ToolError {
 
     #[error("Tool execution failed: {0}")]
     ExecutionFailed(String),
+
+    #[error(
+        "{0} executes code from the analyzed project (build scripts, proc macros); \
+         pass config {{\"allow_code_execution\": true}} only for trusted code or inside a sandbox"
+    )]
+    CodeExecutionNotAllowed(String),
 }
 
 /// Errors that can occur during SARIF operations
@@ -44,7 +50,9 @@ pub enum NormalizeError {
 impl From<ToolError> for rmcp::ErrorData {
     fn from(e: ToolError) -> Self {
         match e {
-            ToolError::UnknownTool(_) | ToolError::PathNotFound(_) => {
+            ToolError::UnknownTool(_)
+            | ToolError::PathNotFound(_)
+            | ToolError::CodeExecutionNotAllowed(_) => {
                 rmcp::ErrorData::invalid_params(e.to_string(), None)
             }
             ToolError::ToolNotInstalled(_) | ToolError::ExecutionFailed(_) => {

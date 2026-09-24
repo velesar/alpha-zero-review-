@@ -198,6 +198,31 @@ Add to your MCP settings (`.mcp.json`):
 }
 ```
 
+## Security Model
+
+The MCP servers are driven by an LLM agent that reads the code being audited,
+so tool arguments are treated as untrusted (the audited repository can try to
+steer the agent through prompt injection).
+
+- **File access is confined.** Artifact `commit`/`type` must be single safe
+  path components and stay under `.audit/artifacts`; `export_findings` writes
+  only inside the audit directory and does not overwrite without
+  `overwrite: true`; sarif-tools and codegraph accept paths only under
+  `--allowed-root` directories (default: the server's working directory,
+  `setup-audit` passes the target project). Symlinks are resolved before
+  checking.
+- **Code execution is opt-in.** Tools that run the audited project's code
+  refuse to start without an explicit flag:
+  `run_tool` with `clippy` needs `config: {"allow_code_execution": true}`,
+  and `load_project_indexes` with `build_if_missing` needs
+  `allow_code_execution: true` (rust-analyzer and scip-java run build
+  scripts). `setup-audit --with-index` prints a warning for the same reason.
+- **Audit untrusted code in a sandbox.** Static tools (semgrep, bandit, ruff,
+  trivy) do not execute the target, but the agent itself may run shell
+  commands suggested by the viewpoint skills (for example `cargo clippy`).
+  Run audits of untrusted repositories in a container or VM without
+  credentials.
+
 ## Usage
 
 1. Start an audit: `claude "Audit this codebase using the viewpoints framework"`

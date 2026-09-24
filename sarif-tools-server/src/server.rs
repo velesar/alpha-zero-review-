@@ -147,7 +147,7 @@ impl SarifToolsServer {
 
     /// Run a code analysis tool and get SARIF output
     #[tool(
-        description = "Run a code analysis tool (semgrep, bandit, ruff, trivy) on a path and get SARIF output"
+        description = "Run a code analysis tool (semgrep, bandit, ruff, trivy, clippy) on a path inside the allowed roots and get SARIF output. clippy compiles the project (build scripts and proc macros run), so it requires config {\"allow_code_execution\": true}; only use that for trusted code or in a sandbox."
     )]
     async fn run_tool(
         &self,

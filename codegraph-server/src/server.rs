@@ -44,6 +44,10 @@ pub struct LoadProjectIndexesInput {
     /// Build missing indexes on-demand if indexer is available (default: false)
     #[serde(default)]
     pub build_if_missing: bool,
+    /// Required with build_if_missing: indexers such as rust-analyzer and
+    /// scip-java run the project's build scripts / build tool
+    #[serde(default)]
+    pub allow_code_execution: bool,
 }
 
 /// Input for load_index
@@ -259,13 +263,23 @@ impl CodegraphServer {
 
     /// Load all project indexes from .audit/indexes/
     #[tool(
-        description = "Auto-load all SCIP indexes from .audit/indexes/ directory. Optionally builds missing indexes if indexer is available."
+        description = "Auto-load all SCIP indexes from .audit/indexes/ in a project under the allowed roots. build_if_missing builds absent indexes and requires allow_code_execution: true, because indexers run project build scripts."
     )]
     async fn load_project_indexes(
         &self,
         input: Parameters<LoadProjectIndexesInput>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let input = input.0;
+        if input.build_if_missing && !input.allow_code_execution {
+            return Err(rmcp::ErrorData::invalid_params(
+                "build_if_missing runs indexers that execute code from the project \
+                 (build scripts, build tools); pass allow_code_execution: true only for \
+                 trusted code or inside a sandbox"
+                    .to_string(),
+                None,
+            ));
+        }
+
         let requested = PathBuf::from(&input.project_path);
         if !requested.exists() {
             return Err(rmcp::ErrorData::invalid_params(

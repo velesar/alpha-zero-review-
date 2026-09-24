@@ -168,6 +168,11 @@ impl ToolRunner for ClippyRunner {
         vec!["rust".to_string()]
     }
 
+    /// cargo clippy compiles the target: build.rs and proc macros run
+    fn executes_target_code(&self) -> bool {
+        true
+    }
+
     fn install_commands(&self) -> Vec<InstallCommand> {
         // Clippy is a rustup component, not a standalone install
         // Return empty - user should run: rustup component add clippy
